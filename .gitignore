@@ -1,0 +1,6 @@
+venv
+.idea
+.directory
+*.pyc
+__pycache__
+dist
