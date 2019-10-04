@@ -80,7 +80,7 @@ class RemoteRunner(object):
         if self.remote_tmp_root is None: return directory
         m = hashlib.md5()
         m.update(os.path.abspath(directory).encode('utf-8'))
-        remote_wd = self.remote_tmp_root + "/" + m.hexdigest()
+        remote_wd = os.path.join(self.remote_tmp_root, m.hexdigest())
         return remote_wd
 
     def run(self, state, rsync_period):
@@ -96,9 +96,10 @@ class RemoteRunner(object):
             except:
                 self.disconnect()
                 self.connect()
+                raise
+            finally:
                 self.stageout(task)
                 self.client.close()
-                raise
         except KeyboardInterrupt as e:
             self.logger.debug("RemoteRunner[%s]: keyboard interrupt" % task.name)
             self.report_error(task, "interrupted")
@@ -203,7 +204,8 @@ class RemoteRunner(object):
         self.logger.debug("RemoteRunner[%s]: stageout" % task.name)
         if self.remote_tmp_root is None: return
         self._rsync_trj_home_with_remote(task)
-        self.exec_cmd("rm -r %s" % self.remote_tmp_wd(task.wd))
+        rm_command = "rm -rvf {}".format(self.remote_tmp_wd(task.wd))
+        self.exec_cmd(rm_command)
 
     def _rsync_trj_home_with_remote(self, task):
         """

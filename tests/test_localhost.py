@@ -1,10 +1,11 @@
 import remote_runner
 import subprocess
 import os
+import glob
 import sys
 
 
-def test_localhost_1():
+def test_localhost_successful_run():
     with remote_runner.ChangeToTemporaryDirectory():
         with open("init.py", "w") as f:
             f.write("""
@@ -62,5 +63,8 @@ except:
         os.remove("init.py")
         subprocess.check_call([sys.executable, "run.py"])
 
-        with open("00/stdout", 'r') as f:
-            assert f.read().strip() == "FOOBAR"
+        assert glob.glob(os.path.expanduser("~/remote_tmp_root/*")) == []
+
+        for i in range(1):
+            with open("%02d/stdout"%i, 'r') as f:
+                assert f.read().strip() == "FOOBAR"
