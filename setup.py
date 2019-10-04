@@ -12,5 +12,8 @@ setup(
     install_requires=[
         'dill',
         'paramiko'
+    ],
+    tests_require=[
+        'pytest'
     ]
 )
