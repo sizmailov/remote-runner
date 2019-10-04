@@ -8,12 +8,12 @@
    xmlns:xlink="http://www.w3.org/1999/xlink"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   inkscape:export-ydpi="1200"
-   inkscape:export-xdpi="1200"
+   inkscape:export-ydpi="96.040726"
+   inkscape:export-xdpi="96.040726"
    inkscape:export-filename="/mnt/md0/Documents/PycharmProjects/remote-runner/docs/images/scheme.svg.png"
-   width="193.17413mm"
-   height="142.12056mm"
-   viewBox="0 0 193.17413 142.12056"
+   width="193.33904mm"
+   height="142.28548mm"
+   viewBox="0 0 193.33903 142.28548"
    version="1.1"
    id="svg8"
    inkscape:version="1.0alpha2 (abe7037c96, 2019-07-15)"
@@ -31,9 +31,9 @@
      borderopacity="1.0"
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
-     inkscape:zoom="0.7"
-     inkscape:cx="256.57264"
-     inkscape:cy="197.44357"
+     inkscape:zoom="0.98994949"
+     inkscape:cx="452.51146"
+     inkscape:cy="350.17965"
      inkscape:document-units="mm"
      inkscape:current-layer="layer1"
      inkscape:document-rotation="0"
@@ -52,12 +52,12 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
   <g
-     transform="translate(-5.3595586,-22.326703)"
+     transform="translate(-5.194646,-22.326703)"
      inkscape:label="Layer 1"
      inkscape:groupmode="layer"
      id="layer1">
@@ -366,6 +366,6 @@
          x="18.353163"
          y="139.35236"
          style="font-style:normal;fill:#000000;fill-opacity:1;stroke-width:0.161482"
-         id="tspan1332">do prelimiary analysis</tspan></text>
+         id="tspan1332">do preliminary analysis</tspan></text>
   </g>
 </svg>
