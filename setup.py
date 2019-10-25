@@ -5,7 +5,7 @@ setup(
     maintainer="Sergei Izmailov",
     maintainer_email="sergei.a.izmailov@gmail.com",
     description="Batch remote execution of python scripts",
-    url="https://github.com/sizmailov/pybind11-stubgen",
+    url="https://github.com/sizmailov/remote-runner",
     version="0.0.0",
     long_description=open("README.rst").read(),
     license="BSD",
