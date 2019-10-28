@@ -15,5 +15,8 @@ setup(
     ],
     tests_require=[
         'pytest'
+    ],
+    packages=[
+        'remote_runner'
     ]
 )

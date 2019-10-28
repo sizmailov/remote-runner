@@ -1,0 +1,21 @@
+language: python
+
+sudo: false
+
+os: linux
+dist: trusty
+
+matrix:
+  include:
+    - python: 3.6
+      name: "python 3.6"
+
+    - python: 3.4
+      name: "python 3.4"
+
+before_script:
+  - python setup.py install
+  - bash travis/enable-ssh-localhost.sh
+
+script:
+  - python -m pytest

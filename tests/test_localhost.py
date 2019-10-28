@@ -36,8 +36,7 @@ import remote_runner
 remote_tmp_root = "~/remote_tmp_root"
 
 python_env = [
-    "source 'PROJECT_ROOT/venv/bin/activate'",
-    "export PYTHONPATH=PROJECT_ROOT",
+    "source 'ACTIVATE_SCRIPT'", 
     "export REMOTE_SECRET=FOOBAR"
 ]
 
@@ -57,7 +56,7 @@ try:
     pool.run(run_args)
 except:
     pool.close()
-                """.replace("PROJECT_ROOT", os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))))
+                """.replace("ACTIVATE_SCRIPT", os.path.abspath(os.path.join(os.path.dirname(sys.executable), "activate"))))
 
         subprocess.check_call([sys.executable, "init.py"])
         os.remove("init.py")
@@ -100,8 +99,7 @@ import remote_runner
 remote_tmp_root = "~/remote_tmp_root"
 
 python_env = [
-    "source 'PROJECT_ROOT/venv/bin/activate'",
-    "export PYTHONPATH=PROJECT_ROOT",
+    "source 'ACTIVATE_SCRIPT'", 
     "export REMOTE_SECRET=FOOBAR"
 ]
 
@@ -121,7 +119,7 @@ try:
     pool.run(run_args)
 except:
     pool.close()
-                """.replace("PROJECT_ROOT", os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))))
+                """.replace("ACTIVATE_SCRIPT", os.path.abspath(os.path.join(os.path.dirname(sys.executable), "activate"))))
 
         subprocess.check_call([sys.executable, "init.py"])
         os.remove("init.py")
