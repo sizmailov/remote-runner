@@ -184,9 +184,17 @@ echo $!
 
     @property
     def ssh(self):
-        if self._ssh is None:  # todo: check ssh connection health
+        if self._ssh is None or self._ssh_is_dead():
             self._ssh = self._create_ssh_client()
         return self._ssh
+
+    def _ssh_is_dead(self):
+        try:
+            transport = self._ssh.get_transport()
+            transport.send_ignore()
+            return False
+        except (AttributeError, paramiko.SSHException):
+            return True
 
     def _get_host_config(self):
         ssh_config = paramiko.SSHConfig()
