@@ -74,7 +74,7 @@ class SSHWorker(Worker):
     @staticmethod
     def rsync(args, src, dst):
         rsync_cmd = ["rsync"] + args + [src, dst]
-        subprocess.call(rsync_cmd)  # todo: add timeout
+        subprocess.call(rsync_cmd)  # todo: add timeout and retry
 
     def remote_call(self, cmd: Union[List[str], str], stdin=None, sleep_time=0.05):
         channel = self.ssh.get_transport().open_session()  # type: paramiko.Channel
@@ -134,7 +134,7 @@ class SSHWorker(Worker):
             self.stage_out(task)
 
     def run_remotely(self, task: Task):
-        script = self.remote_script(task)
+        script = self.generate_remote_script(task)
 
         ecode, stdout, stderr = self.remote_call(script)
         remote_pid = int(stdout.decode('utf-8').splitlines()[-1])
@@ -148,8 +148,9 @@ class SSHWorker(Worker):
 
         def kill_remote(retries=3, retry_timeout=3):
             signal = 9 if retries == 0 else 15
-            self.remote_call(["kill", "-%d" % signal, remote_pid])
-            if not remote_is_running() or retries == 0: return
+            self.remote_call(["kill", f"-{signal}", remote_pid])
+            if not remote_is_running() or retries == 0:
+                return
             time.sleep(retry_timeout)
             kill_remote(retries - 1)
 
@@ -161,7 +162,7 @@ class SSHWorker(Worker):
         except Exception as e:
             kill_remote()
 
-    def remote_script(self, task):
+    def generate_remote_script(self, task):
         script = f"""
 source /etc/profile
 source ~/.profile
@@ -184,7 +185,7 @@ echo $!
     @property
     def ssh(self):
         if self._ssh is None:  # todo: check ssh connection health
-            self._ssh = self._new_ssh_client()
+            self._ssh = self._create_ssh_client()
         return self._ssh
 
     def _get_host_config(self):
@@ -209,7 +210,7 @@ echo $!
 
         return cfg
 
-    def _new_ssh_client(self):
+    def _create_ssh_client(self):
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
