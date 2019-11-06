@@ -10,16 +10,16 @@ class ChangeDirectory:
         assert dirname.is_dir()
 
         if dirname is None:
-            dirname = Path.cwd().resolve()
+            dirname = Path.cwd().absolute()
         self.dirname = dirname
-        self.prev_dir = Path.cwd()
+        self.prev_dir = Path.cwd().absolute()
 
     def __enter__(self):
-        self.prev_dir = Path.cwd().resolve()
-        os.chdir(self.dirname)
+        self.prev_dir = Path.cwd().absolute()
+        os.chdir(str(self.dirname))
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        os.chdir(self.prev_dir)
+        os.chdir(str(self.prev_dir))
 
 
 @contextlib.contextmanager

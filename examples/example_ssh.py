@@ -9,6 +9,7 @@ class MyTask(Task):
         self.name = name
         if not os.path.exists(name):
             os.mkdir(name)
+        subprocess.call(["readlink", "-m", name])
         Task.__init__(self, wd=Path(name).absolute())
         self.save(Path(name, self.state_filename))
 
@@ -21,6 +22,7 @@ class MyExceptionalTask(Task):
     def __init__(self, name):
         if not os.path.exists(name):
             os.mkdir(name)
+        subprocess.call(["readlink", "-m", name])
         Task.__init__(self, wd=Path(name).absolute())
         self.save(Path(name, self.state_filename))
 
@@ -38,6 +40,7 @@ export PYTHONPATH={os.path.dirname(__file__)}
 
 
 with ChangeToTemporaryDirectory():
+    os.system("pwd")
     Pool([
         worker_factory(),
         worker_factory()
@@ -47,12 +50,15 @@ with ChangeToTemporaryDirectory():
     ])
     time.sleep(1.0)
     subprocess.call(["sync"])  # prevent spurious false-positive assertions
+    os.system("ls")
+    os.system("ls 1 2")
     assert "1" in Path("1/stdout").open().read()
     assert "2" in Path("2/stdout").open().read()
     # remote root is cleaned
     assert list(Path(worker_factory().remote_root).glob("*")) == []
 
 with ChangeToTemporaryDirectory():
+    os.system("pwd")
     Pool([
         worker_factory(),
         worker_factory()
@@ -63,6 +69,8 @@ with ChangeToTemporaryDirectory():
 
     time.sleep(1.0)
     subprocess.call(["sync"])  # prevent spurious false-positive assertions
+    os.system("ls")
+    os.system("ls e1 e2")
     assert "Remote runtime error" in Path("e1/stderr").open().read()
     assert "Remote runtime error" in Path("e2/stderr").open().read()
     # remote root is cleaned
