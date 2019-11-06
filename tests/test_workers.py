@@ -1,7 +1,8 @@
 from remote_runner import *
+from remote_runner.utility import ChangeToTemporaryDirectory
 
 
-class MyTask(Task):
+class MyLocalTask(Task):
     def __init__(self, wd: Path, message: str):
         wd.mkdir()
         self.message = message
@@ -15,9 +16,9 @@ class MyTask(Task):
 def test_local_worker():
     with ChangeToTemporaryDirectory():
         tasks = [
-            MyTask(wd=Path("t1"), message='1'),
-            MyTask(wd=Path("t2"), message='2'),
-            MyTask(wd=Path("t3"), message='3'),
+            MyLocalTask(wd=Path("t1"), message='1'),
+            MyLocalTask(wd=Path("t2"), message='2'),
+            MyLocalTask(wd=Path("t3"), message='3'),
         ]
         worker = LocalWorker()
         pool = Pool([worker])
