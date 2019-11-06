@@ -1,8 +1,22 @@
 import sys
 from remote_runner import *
+from remote_runner.utility import ChangeToTemporaryDirectory
 
 
 class MyTask(Task):
+
+    def __init__(self, name):
+        self.name = name
+        if not os.path.exists(name):
+            os.mkdir(name)
+        Task.__init__(self, wd=Path(name).absolute())
+        self.save(Path(name, self.state_filename))
+
+    def run(self):
+        print(self.name)
+
+
+class MyExceptionalTask(Task):
 
     def __init__(self, name):
         if not os.path.exists(name):
@@ -11,7 +25,7 @@ class MyTask(Task):
         self.save(Path(name, self.state_filename))
 
     def run(self):
-        print(threading.current_thread().name)
+        raise RuntimeError("Remote runtime error")
 
 
 def worker_factory():
@@ -23,10 +37,30 @@ export PYTHONPATH={os.path.dirname(__file__)}
     return worker
 
 
-Pool([
-    worker_factory(),
-    worker_factory()
-]).run([
-    MyTask(name="1"),
-    MyTask(name="2")
-])
+with ChangeToTemporaryDirectory():
+    Pool([
+        worker_factory(),
+        worker_factory()
+    ]).run([
+        MyTask(name="1"),
+        MyTask(name="2")
+    ])
+
+    assert "1" in Path("1/stdout").open().read()
+    assert "2" in Path("2/stdout").open().read()
+    # remote root is cleaned
+    assert list(Path(worker_factory().remote_root).glob("*")) == []
+
+with ChangeToTemporaryDirectory():
+    Pool([
+        worker_factory(),
+        worker_factory()
+    ]).run([
+        MyExceptionalTask(name="e1"),
+        MyExceptionalTask(name="e2")
+    ])
+
+    assert "Remote runtime error" in Path("e1/stderr").open().read()
+    assert "Remote runtime error" in Path("e2/stderr").open().read()
+    # remote root is cleaned
+    assert list(Path(worker_factory().remote_root).glob("*")) == []
