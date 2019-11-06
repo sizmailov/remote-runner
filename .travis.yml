@@ -19,3 +19,5 @@ before_script:
 
 script:
   - python -m pytest
+  - python examples/example_local.py
+  - python examples/example_ssh.py
