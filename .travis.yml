@@ -18,8 +18,8 @@ script:
   - python -m pip install flake8 mypy pytest-cov codecov
   - flake8
   - python -m pytest
-  - python -m coverage run examples/example_local.py
-  - python -m coverage run examples/example_ssh.py
+  - python -m coverage run -a examples/example_local.py
+  - python -m coverage run -a examples/example_ssh.py
 
 after_success:
   - codecov
