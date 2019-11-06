@@ -1,13 +1,11 @@
-#/usr/bin/python
+# /usr/bin/python
 
 import os
-import sys
 import smtplib
 import logging
 import json
 # For guessing MIME type based on file name extension
 import mimetypes
-
 
 from email import encoders
 from email.mime.audio import MIMEAudio
@@ -37,15 +35,15 @@ def send_mail(subject, text, to=None, cc=None, files=None):
         password = config["password"]
         smtp_server = config["smtp-server"]
 
+    username = getpass.getuser()
 
-    username=getpass.getuser()
+    if to is None:
+        to = []
+    if cc is None:
+        cc = []
 
-    if to is None: to=[]
-    if cc is None: cc=[]
-
-    to = [ username_to_email[username] ] + to
-    cc = cc + [ username_to_email["admin"] ]
-
+    to = [username_to_email[username]] + to
+    cc = cc + [username_to_email["admin"]]
 
     msg = MIMEMultipart()
 
@@ -66,7 +64,8 @@ def send_mail(subject, text, to=None, cc=None, files=None):
         maintype, subtype = ctype.split('/', 1)
 
         if not os.path.isfile(path):
-            logging.getLogger("remote_runner.postman").warn("WARNING: File `%s` is not regular file or not exists, so not attached. " % path)
+            logging.getLogger("remote_runner.postman").warn(
+                "WARNING: File `%s` is not regular file or not exists, so not attached. " % path)
             continue
 
         if maintype == 'text':
@@ -97,5 +96,5 @@ def send_mail(subject, text, to=None, cc=None, files=None):
     smtp.ehlo()
     smtp.starttls()
     smtp.login(sender_email, password)
-    smtp.sendmail(sender_email, to+cc, msg.as_string())
+    smtp.sendmail(sender_email, to + cc, msg.as_string())
     smtp.close()

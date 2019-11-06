@@ -159,7 +159,7 @@ class SSHWorker(Worker):
                 time.sleep(sleep_time)
                 sleep_time = min(max_sleep_time, sleep_time * 2)
 
-        except Exception as e:
+        except Exception:
             kill_remote()
 
     def generate_remote_script(self, task):
@@ -172,7 +172,7 @@ source ~/.profile
 cd {self.remote_wd(task.wd)}
 
 nohup python -c "
-from remote_runner import * 
+from remote_runner import *
 task = Task.load(Path('{shlex.quote(task.state_filename)}'))
 worker = LocalWorker()
 worker.run(task)

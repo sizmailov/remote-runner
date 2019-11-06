@@ -10,14 +10,16 @@ matrix:
     - python: 3.6
       name: "python 3.6"
 
-    - python: 3.4
-      name: "python 3.4"
-
 before_script:
   - python setup.py install
   - bash travis/enable-ssh-localhost.sh
 
 script:
+  - python -m pip install flake8 mypy pytest-cov codecov
+  - flake8
   - python -m pytest
-  - python examples/example_local.py
-  - python examples/example_ssh.py
+  - python -m coverage run examples/example_local.py
+  - python -m coverage run examples/example_ssh.py
+
+after_success:
+  - codecov
