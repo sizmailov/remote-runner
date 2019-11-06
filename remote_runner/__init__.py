@@ -1,6 +1,6 @@
 from .utility import (ChangeDirectory, ChangeToTemporaryDirectory)
 import time
-from typing import List
+from typing import List, Union
 import queue
 import hashlib
 import threading
@@ -16,14 +16,16 @@ class Task:
 
     def __init__(self, wd: Path):
         assert wd.is_dir()
-        self.wd = wd
+        self.wd = wd.absolute()
+        self.state_filename = Path('state.dill')
 
     def save(self, filename: Path):
         tmp = Path(f"{filename}.bak")
+
         with tmp.open('wb') as out:
-            if out:
-                dill.dump(self, out)
-                out.close()
+            self.state_filename = filename.name
+            dill.dump(self, out)
+            out.close()
         tmp.rename(filename)
 
     @staticmethod
@@ -54,25 +56,32 @@ class SSHWorker(Worker):
     ssh_config_file = "~/.ssh/config"
     rsync_to_remote_args = ['-a']
     rsync_to_local_args = ['-a']
+    remote_user_rc = "# User remote initialization script"
 
     def __init__(self, host: str, remote_root: Path = None):
         self.host = host
-        if remote_root is not None:
-            remote_root = Path("~/")
+        if remote_root is None:
+            remote_root = Path("./remote_tmp_root")
         self.remote_root: Path = remote_root
         self._ssh = None
 
     def remote_wd(self, local_wd: Path):
-        md5sum = hashlib.md5().update(str(local_wd.absolute()).encode('utf-8'))
+        m = hashlib.md5()
+        m.update(str(local_wd.absolute()).encode('utf-8'))
+        md5sum = m.hexdigest()
         return self.remote_root / md5sum
 
-    def rsync(self, args, src, dst):
+    @staticmethod
+    def rsync(args, src, dst):
         rsync_cmd = ["rsync"] + args + [src, dst]
         subprocess.call(rsync_cmd)  # todo: add timeout
 
-    def remote_call(self, cmd: List[str], stdin=None, sleep_time=0.05):
-        channel = self.ssh.get_transport().open_session()
-        cmd_line = ' '.join(shlex.quote(x) for x in cmd)  # shelx.join(cmd)
+    def remote_call(self, cmd: Union[List[str], str], stdin=None, sleep_time=0.05):
+        channel = self.ssh.get_transport().open_session()  # type: paramiko.Channel
+        if isinstance(cmd, str):
+            cmd_line = cmd
+        else:
+            cmd_line = ' '.join(shlex.quote(str(x)) for x in cmd)  # shelx.join(cmd)
         channel.exec_command(cmd_line)
         if stdin is not None:
             inp = channel.makefile('wb', -1)
@@ -84,19 +93,20 @@ class SSHWorker(Worker):
         out = b''
         err = b''
 
+        buffer_size = 80
         while not channel.exit_status_ready():  # monitoring process
             while channel.recv_ready():
-                out += channel.recv(80)
+                out += channel.recv(buffer_size)
             while channel.recv_stderr_ready():
-                err += channel.recv_stderr(80)
+                err += channel.recv_stderr(buffer_size)
             time.sleep(sleep_time)
             if sleep_time < 1:
                 sleep_time *= 2
 
         while channel.recv_ready():
-            out += channel.recv(80)
+            out += channel.recv(buffer_size)
         while channel.recv_stderr_ready():
-            err += channel.recv_stderr(80)
+            err += channel.recv_stderr(buffer_size)
 
         return channel.recv_exit_status(), out, err
 
@@ -124,7 +134,52 @@ class SSHWorker(Worker):
             self.stage_out(task)
 
     def run_remotely(self, task: Task):
-        raise NotImplementedError()
+        script = self.remote_script(task)
+
+        ecode, stdout, stderr = self.remote_call(script)
+        remote_pid = int(stdout.decode('utf-8').splitlines()[-1])
+
+        sleep_time = 0.5
+        max_sleep_time = 30
+
+        def remote_is_running():
+            ecode, stdout, stderr = self.remote_call(["ps", "-p", remote_pid, "-o", "comm="])
+            return ecode == 0
+
+        def kill_remote(retries=3, retry_timeout=3):
+            signal = 9 if retries == 0 else 15
+            self.remote_call(["kill", "-%d" % signal, remote_pid])
+            if not remote_is_running() or retries == 0: return
+            time.sleep(retry_timeout)
+            kill_remote(retries - 1)
+
+        try:
+            while remote_is_running():
+                time.sleep(sleep_time)
+                sleep_time = min(max_sleep_time, sleep_time * 2)
+
+        except Exception as e:
+            kill_remote()
+
+    def remote_script(self, task):
+        script = f"""
+source /etc/profile
+source ~/.profile
+
+{self.remote_user_rc}
+
+cd {self.remote_wd(task.wd)}
+
+nohup python -c "
+from remote_runner import * 
+task = Task.load(Path('{shlex.quote(task.state_filename)}'))
+worker = LocalWorker()
+worker.run(task)
+"  > stdout 2> stderr &
+echo $!
+
+        """
+        return script
 
     @property
     def ssh(self):
@@ -156,7 +211,6 @@ class SSHWorker(Worker):
 
     def _new_ssh_client(self):
         client = paramiko.SSHClient()
-        client._policy = paramiko.WarningPolicy()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
         client.connect(**self._get_host_config())
@@ -201,9 +255,12 @@ class Pool:
 
         for task in tasks:
             tasks_queue.put(task)
+        try:
+            for runner in runners:
+                runner.start()
+        finally:
+            for runner in runners:
+                runner.join()
 
-        for runner in runners:
-            runner.start()
-
-        for runner in runners:
-            runner.join()
+    def terminate(self):
+        pass  # todo: terminate threads
