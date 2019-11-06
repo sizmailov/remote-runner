@@ -45,7 +45,8 @@ with ChangeToTemporaryDirectory():
         MyTask(name="1"),
         MyTask(name="2")
     ])
-    os.system("sync")  # prevent spurious false-positive assertions
+    time.sleep(1.0)
+    subprocess.call(["sync"])  # prevent spurious false-positive assertions
     assert "1" in Path("1/stdout").open().read()
     assert "2" in Path("2/stdout").open().read()
     # remote root is cleaned
@@ -60,7 +61,8 @@ with ChangeToTemporaryDirectory():
         MyExceptionalTask(name="e2")
     ])
 
-    os.system("sync")  # prevent spurious false-positive assertions
+    time.sleep(1.0)
+    subprocess.call(["sync"])  # prevent spurious false-positive assertions
     assert "Remote runtime error" in Path("e1/stderr").open().read()
     assert "Remote runtime error" in Path("e2/stderr").open().read()
     # remote root is cleaned
