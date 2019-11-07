@@ -3,7 +3,7 @@ import time
 from typing import List, Union
 import queue
 import hashlib
-import threading
+import multiprocessing
 import subprocess
 from pathlib import Path
 import paramiko
@@ -237,7 +237,7 @@ class LocalWorker(Worker):
         pass
 
 
-class Runner(threading.Thread):
+class Runner(multiprocessing.Process):
     def __init__(self, worker: Worker, tasks: 'queue.Queue[Task]'):
         super().__init__()
         self.worker = worker
