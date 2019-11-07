@@ -2,11 +2,13 @@ import os
 import tempfile
 import contextlib
 from pathlib import Path
+import threading
 
 
 class ChangeDirectory:
 
     def __init__(self, dirname: Path = None):
+        assert threading.current_thread() is threading.main_thread()
         assert dirname.is_dir()
 
         if dirname is None:
