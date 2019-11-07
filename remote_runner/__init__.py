@@ -61,8 +61,9 @@ class SSHWorker(Worker):
     def __init__(self, host: str, remote_root: Path = None):
         self.host = host
         if remote_root is None:
-            remote_root = Path("./remote_tmp_root")
+            remote_root = Path("~/remote_tmp_root")
         self.remote_root: Path = remote_root
+        self.remote_script_id = None
         self._ssh = None
 
     def remote_wd(self, local_wd: Path):
@@ -133,34 +134,48 @@ class SSHWorker(Worker):
         finally:
             self.stage_out(task)
 
-    def run_remotely(self, task: Task):
-        script = self.generate_remote_script(task)
+    def remote_script_is_running(self):
+        assert self.remote_script_id is not None
+        ecode, stdout, stderr = self.remote_call(["ps", "-p", self.remote_script_id, "-o", "comm="])
+        return ecode == 0
 
-        ecode, stdout, stderr = self.remote_call(script)
-        remote_pid = int(stdout.decode('utf-8').splitlines()[-1])
+    def kill_remote_script(self, retries=3, retry_timeout=3):
+        assert self.remote_script_id is not None
+        signal = 9 if retries == 0 else 15
+        self.remote_call(["kill", f"-{signal}", self.remote_script_id])
+        if not self.remote_script_is_running():
+            self.remote_script_id = None
+            return
+        if retries == 0:
+            return
+        time.sleep(retry_timeout)
+        self.kill_remote_script(retries - 1)
+
+    def run_remotely(self, task: Task):
+        self.start_remote_script(task)
 
         sleep_time = 0.5
         max_sleep_time = 30
 
-        def remote_is_running():
-            ecode, stdout, stderr = self.remote_call(["ps", "-p", remote_pid, "-o", "comm="])
-            return ecode == 0
-
-        def kill_remote(retries=3, retry_timeout=3):
-            signal = 9 if retries == 0 else 15
-            self.remote_call(["kill", f"-{signal}", remote_pid])
-            if not remote_is_running() or retries == 0:
-                return
-            time.sleep(retry_timeout)
-            kill_remote(retries - 1)
-
         try:
-            while remote_is_running():
+            while self.remote_script_is_running():
                 time.sleep(sleep_time)
                 sleep_time = min(max_sleep_time, sleep_time * 2)
-
         except Exception:
-            kill_remote()
+            self.kill_remote_script()
+        finally:
+            self.on_remote_script_complete()
+
+    def on_remote_script_complete(self):
+        pass
+
+    def start_remote_script(self, task):
+        script = self.generate_remote_script(task)
+
+        ecode, stdout, stderr = self.remote_call(script)
+        print(ecode, stdout, stderr)
+        remote_pid = int(stdout.decode('utf-8').splitlines()[-1])
+        self.remote_script_id = remote_pid
 
     def generate_remote_script(self, task):
         script = f"""
