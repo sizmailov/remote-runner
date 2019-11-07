@@ -253,7 +253,7 @@ class LocalWorker(Worker):
 
 
 class Runner(multiprocessing.Process):
-    def __init__(self, worker: Worker, tasks: 'queue.Queue[Task]'):
+    def __init__(self, worker: Worker, tasks: 'multiprocessing.Queue[Task]'):
         super().__init__()
         self.worker = worker
         self.tasks = tasks
@@ -264,7 +264,6 @@ class Runner(multiprocessing.Process):
                 task = self.tasks.get(block=False)
                 with ChangeDirectory(task.wd):
                     self.worker.run(task)  # todo: handle exceptions
-                self.tasks.task_done()
         except queue.Empty:
             pass
 
@@ -274,7 +273,7 @@ class Pool:
         self.workers = workers
 
     def run(self, tasks: List[Task]):
-        tasks_queue = queue.Queue(maxsize=len(tasks))
+        tasks_queue = multiprocessing.Queue(maxsize=len(tasks))
         runners = [Runner(worker=worker, tasks=tasks_queue) for worker in self.workers]
 
         for task in tasks:
