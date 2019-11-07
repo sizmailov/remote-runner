@@ -69,8 +69,8 @@ with ChangeToTemporaryDirectory():
     assert "Remote runtime error" in Path("e1/stderr").open().read()
     assert "Remote runtime error" in Path("e2/stderr").open().read()
 
-    assert 0 != int(Path("1/exit_code").open().read().strip())
-    assert 0 != int(Path("2/exit_code").open().read().strip())
+    assert 1 == int(Path("e1/exit_code").open().read().strip())
+    assert 1 == int(Path("e2/exit_code").open().read().strip())
 
     # remote root is cleaned
     assert list(Path(worker_factory().remote_root).glob("*")) == []
