@@ -40,7 +40,6 @@ export PYTHONPATH={os.path.dirname(__file__)}
 
 
 with ChangeToTemporaryDirectory():
-    os.system("pwd")
     Pool([
         worker_factory(),
         worker_factory()
@@ -48,17 +47,17 @@ with ChangeToTemporaryDirectory():
         MyTask(name="1"),
         MyTask(name="2")
     ])
-    time.sleep(1.0)
-    subprocess.call(["sync"])  # prevent spurious false-positive assertions
-    os.system("ls")
-    os.system("ls 1 2")
+
     assert "1" in Path("1/stdout").open().read()
     assert "2" in Path("2/stdout").open().read()
+
+    assert 0 == int(Path("1/exit_code").open().read().strip())
+    assert 0 == int(Path("2/exit_code").open().read().strip())
+
     # remote root is cleaned
     assert list(Path(worker_factory().remote_root).glob("*")) == []
 
 with ChangeToTemporaryDirectory():
-    os.system("pwd")
     Pool([
         worker_factory(),
         worker_factory()
@@ -67,11 +66,11 @@ with ChangeToTemporaryDirectory():
         MyExceptionalTask(name="e2")
     ])
 
-    time.sleep(1.0)
-    subprocess.call(["sync"])  # prevent spurious false-positive assertions
-    os.system("ls")
-    os.system("ls e1 e2")
     assert "Remote runtime error" in Path("e1/stderr").open().read()
     assert "Remote runtime error" in Path("e2/stderr").open().read()
+
+    assert 0 != int(Path("1/exit_code").open().read().strip())
+    assert 0 != int(Path("2/exit_code").open().read().strip())
+
     # remote root is cleaned
     assert list(Path(worker_factory().remote_root).glob("*")) == []
