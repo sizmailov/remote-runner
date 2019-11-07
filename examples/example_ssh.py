@@ -9,7 +9,6 @@ class MyTask(Task):
         self.name = name
         if not os.path.exists(name):
             os.mkdir(name)
-        subprocess.call(["readlink", "-m", name])
         Task.__init__(self, wd=Path(name).absolute())
         self.save(Path(name, self.state_filename))
 
@@ -22,7 +21,6 @@ class MyExceptionalTask(Task):
     def __init__(self, name):
         if not os.path.exists(name):
             os.mkdir(name)
-        subprocess.call(["readlink", "-m", name])
         Task.__init__(self, wd=Path(name).absolute())
         self.save(Path(name, self.state_filename))
 

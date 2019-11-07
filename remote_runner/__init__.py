@@ -173,7 +173,6 @@ class SSHWorker(Worker):
         script = self.generate_remote_script(task)
 
         ecode, stdout, stderr = self.remote_call(script)
-        print(ecode, stdout, stderr)
         remote_pid = int(stdout.decode('utf-8').splitlines()[-1])
         self.remote_script_id = remote_pid
 
