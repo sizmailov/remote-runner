@@ -119,7 +119,7 @@ class SSHWorker(Worker):
 
     def stage_out(self, task: Task):
         remote = self.copy_to_local(task)
-        self.remote_call(['rm', '-rf', remote])
+        self.remote_call(f'rm -rf {remote}')
 
     def copy_to_local(self, task):
         local = task.wd.absolute()

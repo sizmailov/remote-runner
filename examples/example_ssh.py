@@ -53,7 +53,10 @@ with ChangeToTemporaryDirectory():
     assert 0 == int(Path("2/exit_code").open().read().strip())
 
     # remote root is cleaned
-    assert list(Path(worker_factory().remote_root).glob("*")) == []
+    tmp_remote_dirs = list(
+        d for d in Path(worker_factory().remote_root.expanduser()).glob("*") if d.is_dir()
+    )
+    assert tmp_remote_dirs == []
 
 with ChangeToTemporaryDirectory():
     Pool([
@@ -71,4 +74,7 @@ with ChangeToTemporaryDirectory():
     assert 1 == int(Path("e2/exit_code").open().read().strip())
 
     # remote root is cleaned
-    assert list(Path(worker_factory().remote_root).glob("*")) == []
+    tmp_remote_dirs = list(
+        d for d in Path(worker_factory().remote_root.expanduser()).glob("*") if d.is_dir()
+    )
+    assert tmp_remote_dirs == []
