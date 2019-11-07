@@ -123,7 +123,7 @@ class SSHWorker(Worker):
     def copy_to_local(self, task):
         local = task.wd.absolute()
         remote = self.remote_wd(local)
-        self.rsync(self.rsync_to_remote_args, f"{self.host}:{remote}/", f"{local}/", )
+        self.rsync(self.rsync_to_local_args, f"{self.host}:{remote}/", f"{local}/", )
         return remote
 
     def run(self, task: Task):
