@@ -184,14 +184,15 @@ source ~/.profile
 
 {self.remote_user_rc}
 
-cd {self.remote_wd(task.wd)}
+WORK_DIR={self.remote_wd(task.wd)}
+cd "$WORK_DIR"
 
-nohup python -c "
+nohup bash -c "python -c \\"
 from remote_runner import *
 task = Task.load(Path('{shlex.quote(task.state_filename)}'))
 worker = LocalWorker()
 worker.run(task)
-"  > stdout 2> stderr &
+\\"  > stdout 2> stderr ; echo \\$? > \\"$WORK_DIR/exit_code\\" " &
 echo $!
 
         """
