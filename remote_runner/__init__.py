@@ -3,6 +3,7 @@ import time
 from typing import List, Union
 import queue
 import hashlib
+import threading
 import multiprocessing
 import subprocess
 from pathlib import Path
@@ -50,6 +51,14 @@ class Worker:
 
     def stage_out(self, task: Task):
         raise NotImplementedError()
+
+
+class NullContextManager:
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
 
 
 class SSHWorker(Worker):
@@ -158,16 +167,16 @@ class SSHWorker(Worker):
         max_sleep_time = 30
 
         try:
-            while self.remote_script_is_running():
-                time.sleep(sleep_time)
-                sleep_time = min(max_sleep_time, sleep_time * 2)
+            with self.remote_watcher(task):
+                while self.remote_script_is_running():
+                    time.sleep(sleep_time)
+                    sleep_time = min(max_sleep_time, sleep_time * 2)
         except Exception:
             self.kill_remote_script()
-        finally:
-            self.on_remote_script_complete()
+            raise
 
-    def on_remote_script_complete(self):
-        pass
+    def remote_watcher(self, task: Task):
+        return NullContextManager()
 
     def start_remote_script(self, task):
         script = self.generate_remote_script(task)
@@ -241,6 +250,39 @@ echo $!
         return client
 
 
+class SyncRemoteFolder:
+    def __init__(self, worker: SSHWorker, task: Task, sync_period: float):
+        self.worker = worker
+        self.task = task
+
+        self.sync_period = sync_period
+        self.task_complete = threading.Event()
+
+    def __enter__(self):
+        self.task_complete.clear()
+
+        def sync():
+            while not self.task_complete.is_set():  # todo: handle exiting
+                self.worker.copy_to_local(self.task)
+                self.task_complete.wait(timeout=self.sync_period)
+
+        self.syncing_thread = threading.Thread(target=sync)
+        self.syncing_thread.start()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.task_complete.set()
+        self.syncing_thread.join()
+
+
+class SyncSSHWorker(SSHWorker):
+    def __init__(self, sync_period: float, *args, **kwargs):
+        self.sync_period = sync_period
+        super().__init__(*args, *kwargs)
+
+    def remote_watcher(self, task: Task):
+        return SyncRemoteFolder(worker=self, task=task, sync_period=self.sync_period)
+
+
 class LocalWorker(Worker):
     def run(self, task: Task):
         task.run()
@@ -281,9 +323,12 @@ class Pool:
         try:
             for runner in runners:
                 runner.start()
+        except Exception:
+            self.terminate()
+            raise
         finally:
             for runner in runners:
                 runner.join()
 
     def terminate(self):
-        pass  # todo: terminate threads
+        pass  # todo: terminate subprocesses
