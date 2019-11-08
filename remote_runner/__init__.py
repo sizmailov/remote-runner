@@ -197,7 +197,7 @@ cd "$WORK_DIR"
 
 nohup bash -c "python -c \\"
 from remote_runner import *
-task = Task.load(Path('{shlex.quote(task.state_filename)}'))
+task = Task.load(Path('{shlex.quote(str(task.state_filename))}'))
 worker = LocalWorker()
 worker.run(task)
 \\"  > stdout 2> stderr ; echo \\$? > \\"$WORK_DIR/exit_code\\" " &
