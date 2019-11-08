@@ -54,7 +54,7 @@ with ChangeToTemporaryDirectory():
     random_data = [random.randint(0, 100) for i in range(N)]
 
     task_name = "syncing_task"
-    reader = KeepReading(Path(task_name, "output"), period=0.4)
+    reader = KeepReading(Path(task_name, "output").absolute(), period=0.4)
 
     reader.start()
     worker = sync_ssh_worker_factory()
@@ -74,12 +74,12 @@ with ChangeToTemporaryDirectory():
     prev = reader.data[0]
     n_diffs = 0
     for curr in reader.data[1:]:
-        assert curr.startswith(prev)
+        assert curr.startswith(prev), "File updates are not incrementing"
         if curr != prev:
             n_diffs += 1
         prev = curr
 
-    assert n_diffs > 3  # output was copied multiple times
+    assert n_diffs > 3, "No intermediate output copies"
 
     expected_text = "".join(str(x) for x in random_data)
     assert expected_text == reader.data[-1]
