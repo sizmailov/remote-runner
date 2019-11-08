@@ -277,7 +277,7 @@ class SyncRemoteFolder:
 class SyncSSHWorker(SSHWorker):
     def __init__(self, sync_period: float, *args, **kwargs):
         self.sync_period = sync_period
-        super().__init__(*args, *kwargs)
+        super().__init__(*args, **kwargs)
 
     def remote_watcher(self, task: Task):
         return SyncRemoteFolder(worker=self, task=task, sync_period=self.sync_period)
