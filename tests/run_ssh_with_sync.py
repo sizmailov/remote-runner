@@ -47,6 +47,8 @@ class KeepReading(threading.Thread):
         self.data.append(read_file_content(self.filename))
 
 
+wd = Path.cwd()
+
 with ChangeToTemporaryDirectory():
     N = 1000
     random_data = [random.randint(0, 100) for i in range(N)]
@@ -57,11 +59,14 @@ with ChangeToTemporaryDirectory():
     reader.start()
     worker = sync_ssh_worker_factory()
 
-    Pool([
-        worker,
-    ]).run([
+    tasks = [
         MyTask(name=task_name, data=random_data)
-    ])
+    ]
+
+    with ChangeDirectory(wd):  # cd back to avoid .coverage.* files loss
+        Pool([
+            worker,
+        ]).run(tasks)
 
     reader.stop_reading.set()
     reader.join()

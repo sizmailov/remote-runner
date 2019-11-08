@@ -17,14 +17,19 @@ class MyTask(Task):
         print(self.name)
 
 
+wd = Path.cwd()
+
 with ChangeToTemporaryDirectory():
-    Pool([
-        ssh_worker_factory(),
-        ssh_worker_factory()
-    ]).run([
+    tasks = [
         MyTask(name="1"),
         MyTask(name="2")
-    ])
+    ]
+
+    with ChangeDirectory(wd):  # cd back to avoid .coverage.* files loss
+        Pool([
+            ssh_worker_factory(),
+            ssh_worker_factory()
+        ]).run(tasks)
 
     assert "1" in Path("1/stdout").open().read()
     assert "2" in Path("2/stdout").open().read()

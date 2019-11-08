@@ -15,14 +15,18 @@ class MyExceptionalTask(Task):
         raise RuntimeError("Remote runtime error")
 
 
+wd = Path.cwd()
+
 with ChangeToTemporaryDirectory():
-    Pool([
-        ssh_worker_factory(),
-        ssh_worker_factory()
-    ]).run([
+    tasks = [
         MyExceptionalTask(name="e1"),
         MyExceptionalTask(name="e2")
-    ])
+    ]
+    with ChangeDirectory(wd):  # cd back to avoid .coverage.* files loss
+        Pool([
+            ssh_worker_factory(),
+            ssh_worker_factory()
+        ]).run(tasks)
 
     assert "Remote runtime error" in Path("e1/stderr").open().read()
     assert "Remote runtime error" in Path("e2/stderr").open().read()
