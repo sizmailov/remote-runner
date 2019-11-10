@@ -285,7 +285,16 @@ class SyncSSHWorker(SSHWorker):
 
 class LocalWorker(Worker):
     def run(self, task: Task):
-        task.run()
+        import sys
+        with open("stdout", "w") as sys.stdout, \
+                open("stderr", "w") as sys.stderr, \
+                open("exit_code", "w") as exit_code:
+            try:
+                task.run()
+            except Exception as e:
+                exit_code.write("1")
+            else:
+                exit_code.write("0")
 
     def stage_in(self, task: Task):
         pass
