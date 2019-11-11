@@ -207,32 +207,17 @@ source ~/.profile
 WORK_DIR={self.remote_wd(task.wd)}
 cd "$WORK_DIR"
 
-nohup bash -c "
-
-_term() {{  
-  kill -TERM \\$child 2>/dev/null
-  wait \\$child
-}}
-
-trap _term TERM
-
-python -c \\"
+nohup python -c "
 from remote_runner import *
 
 with RaiseOnSignals():
     task = Task.load(Path('{shlex.quote(str(task.state_filename))}'))
     worker = LocalWorker()
     worker.run(task)
-\\"  > stdout 2> stderr & 
-child=\\$! 
-
-wait \\$child 
-exit_code=\\$?
-echo \\$exit_code > \\"${{WORK_DIR}}/exit_code\\"
 " &
 echo $!
 
-        """
+"""
         return script
 
     @property

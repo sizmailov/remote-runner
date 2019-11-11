@@ -97,8 +97,8 @@ with ChangeToTemporaryDirectory():
     assert "" == Path("one/stderr").open().read()
     assert "" == Path("two/stderr").open().read()
 
-    assert 143 == int(Path("one/exit_code").open().read().strip())
-    assert 143 == int(Path("two/exit_code").open().read().strip())
+    assert 1 == int(Path("one/exit_code").open().read().strip())
+    assert 1 == int(Path("two/exit_code").open().read().strip())
 
     tmp_remote_dirs = list(
         d for d in Path(workers[0].remote_root.expanduser()).glob("*") if d.is_dir()
