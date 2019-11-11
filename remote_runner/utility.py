@@ -1,43 +1,31 @@
 import os
 import tempfile
-import stat
-import shutil
 import contextlib
+from pathlib import Path
+import threading
 
 
-class ChangeDirectory(object):
-    def __init__(self, dir):
-        self.new_dir = dir
-        self.old_dir = os.path.abspath(os.path.curdir)
+class ChangeDirectory:
 
-    def __enter__(self):
-        os.chdir(self.new_dir)
+    def __init__(self, dirname: Path = None):
+        assert threading.current_thread() is threading.main_thread()
+        assert dirname.is_dir()
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        os.chdir(self.old_dir)
-
-
-class TemporaryDirectory(object):
-    """ Mimic tempfile.TemporaryDirectory from python3 """
-
-    def __init__(self):
-        self.dir_name = None
+        if dirname is None:
+            dirname = Path.cwd().absolute()
+        self.dirname = dirname
+        self.prev_dir = Path.cwd().absolute()
 
     def __enter__(self):
-        self.dir_name = tempfile.mkdtemp("remote_runner_")
-        return self.dir_name
+        self.prev_dir = Path.cwd().absolute()
+        os.chdir(str(self.dirname))
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        def retry_with_chmod(func, path, exec_info):
-            os.chmod(path, stat.S_IWRITE)
-            func(path)
-
-        if self.dir_name:
-            shutil.rmtree(self.dir_name, onerror=retry_with_chmod)
+        os.chdir(str(self.prev_dir))
 
 
 @contextlib.contextmanager
 def ChangeToTemporaryDirectory():
-    with TemporaryDirectory() as temp_dir:
-        with ChangeDirectory(temp_dir):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        with ChangeDirectory(Path(temp_dir)):
             yield None
