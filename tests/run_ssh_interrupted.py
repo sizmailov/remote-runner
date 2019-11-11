@@ -94,8 +94,8 @@ with ChangeToTemporaryDirectory():
     assert "calculation end" not in one_stdout
     assert "calculation end" not in two_stdout
 
-    assert "" == Path("one/stderr").open().read()
-    assert "" == Path("two/stderr").open().read()
+    assert "StopCalculationError" in Path("one/stderr").open().read()
+    assert "StopCalculationError" in Path("two/stderr").open().read()
 
     assert 1 == int(Path("one/exit_code").open().read().strip())
     assert 1 == int(Path("two/exit_code").open().read().strip())

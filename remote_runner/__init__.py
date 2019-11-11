@@ -183,6 +183,7 @@ class SSHWorker(Worker):
                 while self.remote_script_is_running():
                     time.sleep(sleep_time)
                     sleep_time = min(max_sleep_time, sleep_time * 2)
+
         except Exception:
             self.kill_remote_script()
             raise
@@ -299,13 +300,19 @@ class SyncSSHWorker(SSHWorker):
 
 class LocalWorker(Worker):
     def run(self, task: Task):
+        # stderr/stdout are redirected to files and intentionally leaved open
+        # to avoid higher-level output loss
+        # This redirection is limited to process scope, therefore
+        # Worker.run() is required to be called at most once per process.
+        # Process could be a standalone or multiprocessing.Process
         import sys
-        with open("stdout", "w") as sys.stdout, \
-                open("stderr", "w") as sys.stderr, \
-                open("exit_code", "w") as exit_code:
+        sys.stdout = open("stdout", "w")
+        sys.stderr = open("stderr", "w")
+
+        with open("exit_code", "w") as exit_code:
             try:
                 task.run()
-            except:
+            except Exception:
                 exit_code.write("1")
                 raise
             else:
@@ -334,6 +341,8 @@ class Runner(multiprocessing.Process):
                             self.worker.run(task)  # todo: handle exceptions
                         except StopCalculationError:
                             break
+                        except Exception:
+                            continue
             except queue.Empty:
                 pass
 
