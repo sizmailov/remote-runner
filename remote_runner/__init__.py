@@ -338,11 +338,12 @@ class Runner(multiprocessing.Process):
                     task = self.tasks.get(block=False)
                     with ChangeDirectory(task.wd):
                         try:
-                            self.worker.run(task)  # todo: handle exceptions
+                            self.worker.run(task)
                         except StopCalculationError:
                             break
                         except Exception:
-                            continue
+                            import traceback
+                            traceback.print_exc()
             except queue.Empty:
                 pass
 
