@@ -11,6 +11,7 @@ import paramiko
 import os
 import shlex
 import dill
+from .errors import StopCalculationError, RaiseOnSignals
 
 
 class Task:
@@ -123,7 +124,7 @@ class SSHWorker(Worker):
     def stage_in(self, task: Task):
         local = task.wd.absolute()
         remote = self.remote_wd(local)
-        self.remote_call(['mkdir', '-p', remote])
+        self.remote_call(f'mkdir -p {remote}')
         self.rsync(self.rsync_to_remote_args, f"{local}/", f"{self.host}:{remote}/")
 
     def stage_out(self, task: Task):
@@ -197,9 +198,11 @@ cd "$WORK_DIR"
 
 nohup bash -c "python -c \\"
 from remote_runner import *
-task = Task.load(Path('{shlex.quote(str(task.state_filename))}'))
-worker = LocalWorker()
-worker.run(task)
+
+with RaiseOnSignals():
+    task = Task.load(Path('{shlex.quote(str(task.state_filename))}'))
+    worker = LocalWorker()
+    worker.run(task)
 \\"  > stdout 2> stderr ; echo \\$? > \\"$WORK_DIR/exit_code\\" " &
 echo $!
 
@@ -291,8 +294,9 @@ class LocalWorker(Worker):
                 open("exit_code", "w") as exit_code:
             try:
                 task.run()
-            except Exception as e:
+            except:
                 exit_code.write("1")
+                raise
             else:
                 exit_code.write("0")
 
@@ -310,13 +314,17 @@ class Runner(multiprocessing.Process):
         self.tasks = tasks
 
     def run(self):
-        try:
-            while True:
-                task = self.tasks.get(block=False)
-                with ChangeDirectory(task.wd):
-                    self.worker.run(task)  # todo: handle exceptions
-        except queue.Empty:
-            pass
+        with RaiseOnSignals():
+            try:
+                while True:
+                    task = self.tasks.get(block=False)
+                    with ChangeDirectory(task.wd):
+                        try:
+                            self.worker.run(task)  # todo: handle exceptions
+                        except StopCalculationError:
+                            break
+            except queue.Empty:
+                pass
 
 
 class Pool:
@@ -330,14 +338,12 @@ class Pool:
         for task in tasks:
             tasks_queue.put(task)
         try:
-            for runner in runners:
-                runner.start()
-        except Exception:
-            self.terminate()
-            raise
+            with RaiseOnSignals():
+                for runner in runners:
+                    runner.start()
+                for runner in runners:
+                    runner.join()
         finally:
             for runner in runners:
-                runner.join()
-
-    def terminate(self):
-        pass  # todo: terminate subprocesses
+                if runner.is_alive():
+                    runner.terminate()
