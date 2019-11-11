@@ -303,7 +303,7 @@ class LocalWorker(Worker):
         # stderr/stdout are redirected to files and intentionally leaved open
         # to avoid higher-level output loss
         # This redirection is limited to process scope, therefore
-        # Worker.run() is required to be called at most once per process.
+        # time-overlapped calls to Worker.run() are prohibited within one process.
         # Process could be a standalone or multiprocessing.Process
         import sys
         sys.stdout = open("stdout", "w")
