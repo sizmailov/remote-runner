@@ -16,7 +16,7 @@ class MyTask(Task):
 
 wd = Path.cwd()
 
-with ChangeDirectory(Path("TMP")):
+with ChangeToTemporaryDirectory():
     tasks = [
         MyTask(name="one"),
         MyTask(name="two")
