@@ -42,6 +42,9 @@ class Task:
     def run(self):
         raise NotImplementedError()
 
+    def __str__(self):
+        return f"<{self.__class__.__name__} wd='{self.wd}'>"
+
 
 class Worker:
     def run(self, task: Task):
@@ -118,8 +121,8 @@ class SSHWorker(Worker):
             out += channel.recv(buffer_size)
         while channel.recv_stderr_ready():
             err += channel.recv_stderr(buffer_size)
-
-        return channel.recv_exit_status(), out, err
+        exit_code = channel.recv_exit_status()
+        return exit_code, out, err
 
     def stage_in(self, task: Task):
         local = task.wd.absolute()
@@ -149,17 +152,25 @@ class SSHWorker(Worker):
         ecode, stdout, stderr = self.remote_call(["ps", "-p", self.remote_script_id, "-o", "comm="])
         return ecode == 0
 
-    def kill_remote_script(self, retries=3, retry_timeout=3):
+    def kill_remote_script(self, timeout=3):
         assert self.remote_script_id is not None
-        signal = 9 if retries == 0 else 15
-        self.remote_call(["kill", f"-{signal}", self.remote_script_id])
-        if not self.remote_script_is_running():
-            self.remote_script_id = None
-            return
-        if retries == 0:
-            return
-        time.sleep(retry_timeout)
-        self.kill_remote_script(retries - 1)
+
+        self._kill_and_wait(15, timeout)
+
+        if self.remote_script_is_running():
+            self._kill_and_wait(9, timeout)
+
+        assert not self.remote_script_is_running()
+
+    def _kill_and_wait(self, signum, timeout):
+        self.remote_call(["kill", f"-{signum}", self.remote_script_id])
+        sleep_time = 0.05
+        max_sleep_time = 30
+        total = 0
+        while self.remote_script_is_running() and total < timeout:
+            time.sleep(sleep_time)
+            total += sleep_time
+            sleep_time = min(max_sleep_time, sleep_time * 2)
 
     def run_remotely(self, task: Task):
         self.start_remote_script(task)
@@ -196,14 +207,29 @@ source ~/.profile
 WORK_DIR={self.remote_wd(task.wd)}
 cd "$WORK_DIR"
 
-nohup bash -c "python -c \\"
+nohup bash -c "
+
+_term() {{  
+  kill -TERM \\$child 2>/dev/null
+  wait \\$child
+}}
+
+trap _term TERM
+
+python -c \\"
 from remote_runner import *
 
 with RaiseOnSignals():
     task = Task.load(Path('{shlex.quote(str(task.state_filename))}'))
     worker = LocalWorker()
     worker.run(task)
-\\"  > stdout 2> stderr ; echo \\$? > \\"$WORK_DIR/exit_code\\" " &
+\\"  > stdout 2> stderr & 
+child=\\$! 
+
+wait \\$child 
+exit_code=\\$?
+echo \\$exit_code > \\"${{WORK_DIR}}/exit_code\\"
+" &
 echo $!
 
         """
@@ -347,3 +373,6 @@ class Pool:
             for runner in runners:
                 if runner.is_alive():
                     runner.terminate()
+
+            for runner in runners:
+                runner.join()
