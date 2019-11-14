@@ -1,26 +1,30 @@
 language: python
-
 sudo: false
-
 os: linux
 dist: trusty
-
 matrix:
   include:
     - python: 3.6
-      name: "python 3.6"
-
+      name: python 3.6
 before_script:
   - python setup.py install
   - bash travis/enable-ssh-localhost.sh
-
 script:
   - python -m pip install flake8 mypy pytest-cov codecov
   - flake8
   - python -m pytest
   - mkdir ~/remote_tmp_root
-  - set -e; for run_file in tests/run_*.py ; do echo "$run_file"; python -m coverage run --append "$run_file";  done ; set +e;
+  - set -e; for run_file in tests/run_*.py ; do echo "$run_file"; python -m coverage
+    run --append "$run_file";  done ; set +e;
   - coverage combine --append
-
 after_success:
   - codecov
+deploy:
+  provider: pypi
+  user: __token__
+  skip_existing: true
+  on:
+    branch: master
+  password:
+    secure: Yc7FZMwe764m3c/b/ucUULEjCIuPhQraXKLCRwSmK0PmMc+4Llt8O1DQbHmMPk4DWUKK/yO1n7UxORDRA3nKCtIf0EwBd/xfYPEuvORuXxs1dvQ/DE4XYv5J5nB38mnWlBbgN2MldpuXk3o3J7iM20oy9MjdxBOt2lWJTlnMiOw9u5HlyMrrHxhsfORlHu0yotMJtJ7674IP6rk882GotOjUR6APS0RxOd6ZX90MFOOYF8sTO1IZ2gZ6SKpaiyxoy5vUBtIh4dEwdpHYoGObVd0FM7AV+3crSI+xNlTzxPSAkOO7NbnB3HP+MA9s8BOEydc2td0vSBFWmf4qR4HYyJIpFSEnKikJEIA/OPILy5Uz2gRUJt+DF3G7KzTFDSBz81Zo1Mx0PvEk4ZJ6KnO61oCwgudVL1DpG0aMztmjfUSUPqzOHbHg070ydBLFfZKk7C2KsWrgB+j0YmnrOmBan+ExDMpg3Kd93Kz8YIfwjwfgMI6Um0DV/5OmaLD2kILulPGYiyZRM5npQ9IC4bUWjwnKCkQUyGG+vm8ZnaosdnksSX0MjGtrsVUTTToY1zQ+nCJmnvEzYUPVf0dWN2zMVEJvRzZcj2PsZM7AbrrzX6+tUfeVmW7ynVZj9+Qxc93qZtWWO8LTS34F5y4HI5pjXe6C42YV1UuGw5vF5OpPQ4w=
+
