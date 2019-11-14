@@ -18,7 +18,11 @@ class RaiseOnSignals:
 
     @staticmethod
     def _handler(signum, stack_frame):
-        raise StopCalculationError()
+        try:
+            raise StopCalculationError()
+        finally:
+            # protect from double kill (e.g. accident too many Ctrl-C hits)
+            signal.signal(signum, signal.SIG_IGN)
 
     @staticmethod
     def _raise_on_signals(signums=(signal.SIGTERM, signal.SIGINT)):
