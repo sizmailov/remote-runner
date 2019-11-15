@@ -353,21 +353,28 @@ class Pool:
         self.workers = workers
 
     def run(self, tasks: List[Task]):
-        tasks_queue = multiprocessing.Queue(maxsize=len(tasks))
-        runners = [Runner(worker=worker, tasks=tasks_queue) for worker in self.workers]
+        with multiprocessing.Manager() as manager:
+            tasks_queue = manager.Queue(maxsize=len(tasks))
 
-        for task in tasks:
-            tasks_queue.put(task)
-        try:
-            with RaiseOnSignals():
-                for runner in runners:
-                    runner.start()
-                for runner in runners:
+            def generate_runners():
+                for worker in self.workers:
+                    yield Runner(worker=worker, tasks=tasks_queue)
+
+            stated_runners = []
+
+            for task in tasks:
+                tasks_queue.put(task)
+            try:
+                with RaiseOnSignals():
+                    for runner in generate_runners():
+                        runner.start()
+                        stated_runners.append(runner)
+                    for runner in stated_runners:
+                        runner.join()
+            finally:
+                for runner in stated_runners:
+                    if runner.is_alive():
+                        runner.terminate()
+
+                for runner in stated_runners:
                     runner.join()
-        finally:
-            for runner in runners:
-                if runner.is_alive():
-                    runner.terminate()
-
-            for runner in runners:
-                runner.join()
