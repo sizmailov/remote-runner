@@ -65,6 +65,27 @@ class NullContextManager:
         pass
 
 
+class RemoteScriptError(Exception):
+    def __init__(self, script: str, exit_code: int, stdout: bytes, stderr: bytes):
+        self.command = script
+        self.exit_code = exit_code
+        self.stdout = stdout
+        self.stderr = stderr
+
+    def __str__(self):
+        return f"""Command exited with {self.exit_code}
+Command:
+{self.command}
+
+Stdout:
+{self.stdout.decode('utf-8')}
+
+Stderr:
+{self.stderr.decode('utf-8')}
+
+"""
+
+
 class SSHWorker(Worker):
     ssh_config_file = "~/.ssh/config"
     rsync_to_remote_args = ['-a']
@@ -195,6 +216,9 @@ class SSHWorker(Worker):
         script = self.generate_remote_script(task)
 
         ecode, stdout, stderr = self.remote_call(script)
+        if ecode != 0:
+            raise RemoteScriptError(script, ecode, stdout, stderr)
+
         remote_pid = int(stdout.decode('utf-8').splitlines()[-1])
         self.remote_script_id = remote_pid
 
