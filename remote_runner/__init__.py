@@ -358,7 +358,7 @@ class LocalWorker(Worker):
 
 
 class Runner(multiprocessing.Process):
-    def __init__(self, worker: Worker, tasks: 'multiprocessing.Queue[Task]'):
+    def __init__(self, worker: Worker, tasks: 'multiprocessing.Queue[Path]'):
         super().__init__()
         self.worker = worker
         self.tasks = tasks
@@ -367,7 +367,8 @@ class Runner(multiprocessing.Process):
         with RaiseOnSignals():
             try:
                 while True:
-                    task = self.tasks.get(block=False)
+                    task_path = self.tasks.get(block=False)
+                    task = Task.load(task_path)
                     with ChangeDirectory(task.wd):
                         try:
                             self.worker.run(task)
@@ -395,7 +396,9 @@ class Pool:
             stated_runners = []
 
             for task in tasks:
-                tasks_queue.put(task)
+                path_to_task_file = task.wd / task.state_filename
+                task.save(path_to_task_file)
+                tasks_queue.put(path_to_task_file)
             try:
                 with RaiseOnSignals():
                     for runner in generate_runners():
