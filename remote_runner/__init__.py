@@ -215,7 +215,7 @@ with RaiseOnSignals():
     task = Task.load(Path('{shlex.quote(str(task.state_filename))}'))
     worker = LocalWorker()
     worker.run(task)
-" &
+" > .startup.stdout 2>.startup.stderr &
 echo $!
 
 """
