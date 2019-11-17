@@ -11,7 +11,16 @@ import paramiko
 import os
 import shlex
 import dill
+import logging
 from .errors import StopCalculationError, RaiseOnSignals
+
+
+def logger(self_or_class):
+    if isinstance(self_or_class, type):
+        class_name = self_or_class.__name__
+    else:
+        class_name = self_or_class.__class__.__name__
+    return logging.getLogger(f"{__name__}.{class_name}")
 
 
 class Task:
@@ -29,6 +38,7 @@ class Task:
             dill.dump(self, out)
             out.close()
         tmp.rename(filename)
+        logger(self).info(f"{self} saved to {filename}")
 
     @staticmethod
     def load(filename: Path) -> 'Task':
@@ -43,7 +53,7 @@ class Task:
         raise NotImplementedError()
 
     def __str__(self):
-        return f"<{self.__class__.__name__} wd='{self.wd}'>"
+        return f"{self.__class__.__name__}(wd='{self.wd}')"
 
 
 class Worker:
@@ -108,15 +118,19 @@ class SSHWorker(Worker):
         self.remote_script_id = None
         self._ssh = None
 
+    def __str__(self):
+        return f"{self.__class__.__name__}({self.host})"
+
     def remote_wd(self, local_wd: Path):
         m = hashlib.md5()
         m.update(str(local_wd.absolute()).encode('utf-8'))
         md5sum = m.hexdigest()
         return self.remote_root / md5sum
 
-    @staticmethod
-    def rsync(args, src, dst):
+    @classmethod
+    def rsync(cls, args, src, dst):
         rsync_cmd = ["rsync"] + args + [src, dst]
+        logger(cls).info(" ".join(rsync_cmd))
         subprocess.call(rsync_cmd)  # todo: add timeout and retry
 
     def remote_call(self, cmd: Union[List[str], str], stdin=None, sleep_time=0.05):
@@ -156,10 +170,12 @@ class SSHWorker(Worker):
     def stage_in(self, task: Task):
         local = task.wd.absolute()
         remote = self.remote_wd(local)
+        logger(self).info(f"{self}:{task}")
         self.remote_call(f'mkdir -p {remote}')
         self.rsync(self.rsync_to_remote_args, f"{local}/", f"{self.host}:{remote}/")
 
     def stage_out(self, task: Task):
+        logger(self).info(f"{self}:{task}")
         remote = self.copy_to_local(task)
         self.remote_call(f'rm -rf {remote}')
 
@@ -170,6 +186,7 @@ class SSHWorker(Worker):
         return remote
 
     def run(self, task: Task):
+        logger(self).info(f"{self}:{task}")
         self.stage_in(task)
         try:
             self.run_remotely(task)
@@ -179,6 +196,7 @@ class SSHWorker(Worker):
     def remote_script_is_running(self):
         assert self.remote_script_id is not None
         ecode, stdout, stderr = self.remote_call(["ps", "-p", self.remote_script_id, "-o", "comm="])
+        logger(self).debug(f"{self}:pid={self.remote_script_id} is {'NOT ' if ecode else ''}running")
         return ecode == 0
 
     def kill_remote_script(self, timeout=3):
@@ -192,6 +210,7 @@ class SSHWorker(Worker):
         assert not self.remote_script_is_running()
 
     def _kill_and_wait(self, signum, timeout):
+        logger(self).error(f"{self}: kill {self.remote_script_id} with {signum}")
         self.remote_call(["kill", f"-{signum}", self.remote_script_id])
         sleep_time = 0.05
         max_sleep_time = 30
@@ -203,6 +222,7 @@ class SSHWorker(Worker):
 
     def run_remotely(self, task: Task):
         self.start_remote_script(task)
+        logger(self).info(f"{self}:{task} started")
 
         sleep_time = 0.5
         max_sleep_time = 30
@@ -213,7 +233,8 @@ class SSHWorker(Worker):
                     time.sleep(sleep_time)
                     sleep_time = min(max_sleep_time, sleep_time * 2)
 
-        except Exception:
+        except Exception as e:
+            logger(self).error(f"Exception occurred during remote task processing {e}")
             self.kill_remote_script()
             raise
 
@@ -363,20 +384,29 @@ class Runner(multiprocessing.Process):
         self.worker = worker
         self.tasks = tasks
 
+    def __str__(self):
+        return f"{self.__class__.__name__}(worker={self.worker}, name={self.name})"
+
     def run(self):
         with RaiseOnSignals():
             try:
                 while True:
+                    logger(self).info(f"{self} start tasks processing")
                     task_path = self.tasks.get(block=False)
                     task = Task.load(task_path)
                     with ChangeDirectory(task.wd):
                         try:
+                            logger(self).info(f"{self}: starting {task}")
                             self.worker.run(task)
-                        except StopCalculationError:
+                        except StopCalculationError as e:
+                            logger(self).warning(f"{self}: {task} raised {e}")
                             break
-                        except Exception:
+                        except Exception as e:
+                            logger(self).error(f"{self}: {task} raised {e}")
                             import traceback
                             traceback.print_exc()
+                        finally:
+                            logger(self).info(f"{self}: {task} done")
             except queue.Empty:
                 pass
 
@@ -404,12 +434,18 @@ class Pool:
                     for runner in generate_runners():
                         runner.start()
                         stated_runners.append(runner)
+                        logger(self).info(f"{runner} spawned")
                     for runner in stated_runners:
                         runner.join()
+            except Exception as e:
+                logger(self).error(f"Exception occurred during task processing: {e}")
+                raise
             finally:
                 for runner in stated_runners:
                     if runner.is_alive():
                         runner.terminate()
+                        logger(self).warning(f"{runner} SIGTERM send")
 
                 for runner in stated_runners:
                     runner.join()
+                    logger(self).info(f"{runner} joined")

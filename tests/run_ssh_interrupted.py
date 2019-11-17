@@ -7,9 +7,10 @@ import logging
 
 logger = logging.getLogger(remote_runner.__name__)
 
-fmt = logging.Formatter('[%(name)s][%(funcName)s][%(asctime)-15s][%(relativeCreated)d][%(levelname)-6s]%(message)s')
+fmt = logging.Formatter(
+    '%(asctime)-15s [%(relativeCreated)7d] %(levelname)8s - %(name)s.%(funcName)s:%(lineno)d - %(message)s')
 
-ch = logging.FileHandler("example.log")
+ch = logging.FileHandler("remote-runner.log", mode="w")
 ch.setFormatter(fmt)
 
 logger.setLevel(logging.DEBUG)
@@ -70,7 +71,7 @@ with ChangeToTemporaryDirectory():
             ssh_worker_factory(),
             ssh_worker_factory()
         ]
-    killer = SelfKiller(1.0, signal.SIGINT)
+    killer = SelfKiller(2.0, signal.SIGINT)
     killer.start()
     try:
         with RaiseOnSignals():
