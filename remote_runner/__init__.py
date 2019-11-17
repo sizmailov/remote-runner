@@ -15,7 +15,7 @@ import logging
 from .errors import StopCalculationError, RaiseOnSignals
 
 
-def logger(self_or_class):
+def _logger(self_or_class):
     if isinstance(self_or_class, type):
         class_name = self_or_class.__name__
     else:
@@ -38,7 +38,7 @@ class Task:
             dill.dump(self, out)
             out.close()
         tmp.rename(filename)
-        logger(self).info(f"{self} saved to {filename}")
+        _logger(self).info(f"{self} saved to {filename}")
 
     @staticmethod
     def load(filename: Path) -> 'Task':
@@ -130,7 +130,7 @@ class SSHWorker(Worker):
     @classmethod
     def rsync(cls, args, src, dst):
         rsync_cmd = ["rsync"] + args + [src, dst]
-        logger(cls).info(" ".join(rsync_cmd))
+        _logger(cls).info(" ".join(rsync_cmd))
         subprocess.call(rsync_cmd)  # todo: add timeout and retry
 
     def remote_call(self, cmd: Union[List[str], str], stdin=None, sleep_time=0.05):
@@ -170,12 +170,12 @@ class SSHWorker(Worker):
     def stage_in(self, task: Task):
         local = task.wd.absolute()
         remote = self.remote_wd(local)
-        logger(self).info(f"{self}:{task}")
+        _logger(self).info(f"{self}:{task}")
         self.remote_call(f'mkdir -p {remote}')
         self.rsync(self.rsync_to_remote_args, f"{local}/", f"{self.host}:{remote}/")
 
     def stage_out(self, task: Task):
-        logger(self).info(f"{self}:{task}")
+        _logger(self).info(f"{self}:{task}")
         remote = self.copy_to_local(task)
         self.remote_call(f'rm -rf {remote}')
 
@@ -186,7 +186,7 @@ class SSHWorker(Worker):
         return remote
 
     def run(self, task: Task):
-        logger(self).info(f"{self}:{task}")
+        _logger(self).info(f"{self}:{task}")
         self.stage_in(task)
         try:
             self.run_remotely(task)
@@ -196,7 +196,7 @@ class SSHWorker(Worker):
     def remote_script_is_running(self):
         assert self.remote_script_id is not None
         ecode, stdout, stderr = self.remote_call(["ps", "-p", self.remote_script_id, "-o", "comm="])
-        logger(self).debug(f"{self}:pid={self.remote_script_id} is {'NOT ' if ecode else ''}running")
+        _logger(self).debug(f"{self}:pid={self.remote_script_id} is {'NOT ' if ecode else ''}running")
         return ecode == 0
 
     def kill_remote_script(self, timeout=3):
@@ -210,7 +210,7 @@ class SSHWorker(Worker):
         assert not self.remote_script_is_running()
 
     def _kill_and_wait(self, signum, timeout):
-        logger(self).error(f"{self}: kill {self.remote_script_id} with {signum}")
+        _logger(self).error(f"{self}: kill {self.remote_script_id} with {signum}")
         self.remote_call(["kill", f"-{signum}", self.remote_script_id])
         sleep_time = 0.05
         max_sleep_time = 30
@@ -222,7 +222,7 @@ class SSHWorker(Worker):
 
     def run_remotely(self, task: Task):
         self.start_remote_script(task)
-        logger(self).info(f"{self}:{task} started")
+        _logger(self).info(f"{self}:{task} started")
 
         sleep_time = 0.5
         max_sleep_time = 30
@@ -234,7 +234,7 @@ class SSHWorker(Worker):
                     sleep_time = min(max_sleep_time, sleep_time * 2)
 
         except Exception as e:
-            logger(self).error(f"Exception occurred during remote task processing {e}")
+            _logger(self).error(f"Exception occurred during remote task processing {e}")
             self.kill_remote_script()
             raise
 
@@ -391,22 +391,22 @@ class Runner(multiprocessing.Process):
         with RaiseOnSignals():
             try:
                 while True:
-                    logger(self).info(f"{self} start tasks processing")
+                    _logger(self).info(f"{self} start tasks processing")
                     task_path = self.tasks.get(block=False)
                     task = Task.load(task_path)
                     with ChangeDirectory(task.wd):
                         try:
-                            logger(self).info(f"{self}: starting {task}")
+                            _logger(self).info(f"{self}: starting {task}")
                             self.worker.run(task)
                         except StopCalculationError as e:
-                            logger(self).warning(f"{self}: {task} raised {e}")
+                            _logger(self).warning(f"{self}: {task} raised {e}")
                             break
                         except Exception as e:
-                            logger(self).error(f"{self}: {task} raised {e}")
+                            _logger(self).error(f"{self}: {task} raised {e}")
                             import traceback
                             traceback.print_exc()
                         finally:
-                            logger(self).info(f"{self}: {task} done")
+                            _logger(self).info(f"{self}: {task} done")
             except queue.Empty:
                 pass
 
@@ -434,18 +434,41 @@ class Pool:
                     for runner in generate_runners():
                         runner.start()
                         stated_runners.append(runner)
-                        logger(self).info(f"{runner} spawned")
+                        _logger(self).info(f"{runner} spawned")
                     for runner in stated_runners:
                         runner.join()
             except Exception as e:
-                logger(self).error(f"Exception occurred during task processing: {e}")
+                _logger(self).error(f"Exception occurred during task processing: {e}")
                 raise
             finally:
                 for runner in stated_runners:
                     if runner.is_alive():
                         runner.terminate()
-                        logger(self).warning(f"{runner} SIGTERM send")
+                        _logger(self).warning(f"{runner} SIGTERM send")
 
                 for runner in stated_runners:
                     runner.join()
-                    logger(self).info(f"{runner} joined")
+                    _logger(self).info(f"{runner} joined")
+
+
+def log_to(filename: Union[str, Path] = None, mode: str = None, fmt: str = None, level=None):
+    if fmt is None:
+        fmt = '%(asctime)-15s [%(relativeCreated)7d] ' \
+              '%(levelname)8s - %(name)s.%(funcName)s:%(lineno)d - ' \
+              '%(message)s'
+    if filename is None:
+        filename = "remote-runner.log"
+    if mode is None:
+        mode = "a"
+    if level is None:
+        level = logging.INFO
+
+    logger = logging.getLogger(__name__)
+
+    formatter = logging.Formatter(fmt)
+
+    ch = logging.FileHandler(filename=str(filename), mode=mode)
+    ch.setFormatter(formatter)
+
+    logger.setLevel(level)
+    logger.addHandler(ch)

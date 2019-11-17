@@ -3,18 +3,8 @@ from remote_runner.utility import ChangeToTemporaryDirectory
 import signal
 from ssh_common import ssh_worker_factory
 import remote_runner
-import logging
 
-logger = logging.getLogger(remote_runner.__name__)
-
-fmt = logging.Formatter(
-    '%(asctime)-15s [%(relativeCreated)7d] %(levelname)8s - %(name)s.%(funcName)s:%(lineno)d - %(message)s')
-
-ch = logging.FileHandler("remote-runner.log", mode="w")
-ch.setFormatter(fmt)
-
-logger.setLevel(logging.DEBUG)
-logger.addHandler(ch)
+log_to('remote-runner.log')
 
 
 class MyTask(Task):
