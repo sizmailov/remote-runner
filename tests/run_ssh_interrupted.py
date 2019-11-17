@@ -1,18 +1,21 @@
-from remote_runner import *
-from remote_runner.utility import ChangeToTemporaryDirectory
+import os
 import signal
-from ssh_common import ssh_worker_factory
+import threading
+import time
+from pathlib import Path
+
 import remote_runner
+from ssh_common import ssh_worker_factory
 
-log_to('remote-runner.log')
+remote_runner.log_to('remote-runner.log')
 
 
-class MyTask(Task):
+class MyTask(remote_runner.Task):
     def __init__(self, name):
         self.name = name
         if not os.path.exists(name):
             os.mkdir(name)
-        Task.__init__(self, wd=Path(name).absolute())
+        remote_runner.Task.__init__(self, wd=Path(name).absolute())
         self.save(Path(name, self.state_filename))
 
     def run(self):
@@ -27,7 +30,7 @@ class MyTask(Task):
                 total += dt
                 print(total)
             print("calculation end")
-        except StopCalculationError:
+        except remote_runner.StopCalculationError:
             print("interrupted")
             raise
         else:
@@ -50,13 +53,13 @@ class SelfKiller(threading.Thread):
         os.kill(self.pid, self.signum)
 
 
-with ChangeToTemporaryDirectory():
+with remote_runner.utility.ChangeToTemporaryDirectory():
     tasks = [
         MyTask(name="one"),
         MyTask(name="two")
     ]
 
-    with ChangeDirectory(wd):  # cd back to avoid .coverage.* files loss
+    with remote_runner.utility.ChangeDirectory(wd):  # cd back to avoid .coverage.* files loss
         workers = [
             ssh_worker_factory(),
             ssh_worker_factory()
@@ -64,9 +67,9 @@ with ChangeToTemporaryDirectory():
     killer = SelfKiller(2.0, signal.SIGINT)
     killer.start()
     try:
-        with RaiseOnSignals():
-            Pool(workers).run(tasks)
-    except StopCalculationError:
+        with remote_runner.RaiseOnSignals():
+            remote_runner.Pool(workers).run(tasks)
+    except remote_runner.StopCalculationError:
         pass
     else:
         assert False, "Excepted StopCalculationError exception"

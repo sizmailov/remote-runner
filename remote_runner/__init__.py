@@ -262,6 +262,7 @@ WORK_DIR={self.remote_wd(task.wd)}
 cd "$WORK_DIR"
 
 nohup python -c "
+import remote_runner
 from remote_runner import *
 
 with RaiseOnSignals():

@@ -1,4 +1,4 @@
-from remote_runner.errors import RaiseOnSignals, StopCalculationError
+import remote_runner
 import threading
 import time
 import os
@@ -24,11 +24,11 @@ class SelfDoubleKiller(threading.Thread):
 @pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGINT])
 def test_survive_double_kill_15(signum):
     killer = SelfDoubleKiller(0.3, signum)
-    with RaiseOnSignals():
+    with remote_runner.RaiseOnSignals():
         try:
             killer.start()
             time.sleep(1.0)
-        except StopCalculationError as e:
+        except remote_runner.StopCalculationError as e:
             try:
                 time.sleep(1.0)
             except Exception as e:

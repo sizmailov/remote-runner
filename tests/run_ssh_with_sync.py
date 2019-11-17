@@ -1,15 +1,18 @@
+import os
 import random
-from remote_runner import *
-from remote_runner.utility import ChangeToTemporaryDirectory
+import threading
+from pathlib import Path
+
+import remote_runner
 from ssh_common import sync_ssh_worker_factory
 
 
-class MyTask(Task):
+class MyTask(remote_runner.Task):
 
     def __init__(self, name, data):
         if not os.path.exists(name):
             os.mkdir(name)
-        Task.__init__(self, wd=Path(name).absolute())
+        remote_runner.Task.__init__(self, wd=Path(name).absolute())
         self.data = data
         self.save(Path(name, self.state_filename))
 
@@ -49,7 +52,7 @@ class KeepReading(threading.Thread):
 
 wd = Path.cwd()
 
-with ChangeToTemporaryDirectory():
+with remote_runner.utility.ChangeToTemporaryDirectory():
     N = 1000
     random_data = [random.randint(0, 100) for i in range(N)]
 
@@ -63,8 +66,8 @@ with ChangeToTemporaryDirectory():
         MyTask(name=task_name, data=random_data)
     ]
 
-    with ChangeDirectory(wd):  # cd back to avoid .coverage.* files loss
-        Pool([
+    with remote_runner.utility.ChangeDirectory(wd):  # cd back to avoid .coverage.* files loss
+        remote_runner.Pool([
             worker,
         ]).run(tasks)
 

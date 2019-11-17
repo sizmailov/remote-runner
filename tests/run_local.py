@@ -1,14 +1,16 @@
-from remote_runner import *
-from remote_runner.utility import ChangeToTemporaryDirectory
+import os
+from pathlib import Path
+
+import remote_runner
 
 
-class MyTask(Task):
+class MyTask(remote_runner.Task):
 
     def __init__(self, name):
         self.name = name
         if not os.path.exists(name):
             os.mkdir(name)
-        Task.__init__(self, wd=Path(name).absolute())
+        remote_runner.Task.__init__(self, wd=Path(name).absolute())
 
     def run(self):
         print(self.name)
@@ -16,19 +18,19 @@ class MyTask(Task):
 
 wd = Path.cwd()
 
-with ChangeToTemporaryDirectory():
+with remote_runner.utility.ChangeToTemporaryDirectory():
     tasks = [
         MyTask(name="one"),
         MyTask(name="two")
     ]
 
-    with ChangeDirectory(wd):  # cd back to avoid .coverage.* files loss
+    with remote_runner.utility.ChangeDirectory(wd):  # cd back to avoid .coverage.* files loss
         workers = [
-            LocalWorker(),
-            LocalWorker()
+            remote_runner.LocalWorker(),
+            remote_runner.LocalWorker()
         ]
 
-    Pool(workers).run(tasks)
+    remote_runner.Pool(workers).run(tasks)
 
     assert "one" in Path("one/stdout").open().read()
     assert "two" in Path("two/stdout").open().read()

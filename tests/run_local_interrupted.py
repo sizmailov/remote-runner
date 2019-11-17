@@ -1,14 +1,18 @@
-from remote_runner import *
-from remote_runner.utility import ChangeToTemporaryDirectory
+import os
 import signal
+import threading
+import time
+from pathlib import Path
+
+import remote_runner
 
 
-class MyTask(Task):
+class MyTask(remote_runner.Task):
     def __init__(self, name):
         self.name = name
         if not os.path.exists(name):
             os.mkdir(name)
-        Task.__init__(self, wd=Path(name).absolute())
+        remote_runner.Task.__init__(self, wd=Path(name).absolute())
 
     def run(self):
         import sys
@@ -21,7 +25,7 @@ class MyTask(Task):
                 time.sleep(dt)
                 total += dt
             print("calculation end")
-        except StopCalculationError:
+        except remote_runner.StopCalculationError:
             print("interrupted")
             raise
         else:
@@ -42,7 +46,7 @@ class SelfKiller(threading.Thread):
         os.kill(os.getpid(), self.signum)
 
 
-with ChangeToTemporaryDirectory():
+with remote_runner.utility.ChangeToTemporaryDirectory():
     tasks = [
         MyTask(name="one"),
         MyTask(name="two")
@@ -50,16 +54,16 @@ with ChangeToTemporaryDirectory():
 
     killer = SelfKiller(signal.SIGTERM)
 
-    with ChangeDirectory(wd):  # cd back to avoid .coverage.* files loss
+    with remote_runner.utility.ChangeDirectory(wd):  # cd back to avoid .coverage.* files loss
         workers = [
-            LocalWorker(),
-            LocalWorker()
+            remote_runner.LocalWorker(),
+            remote_runner.LocalWorker()
         ]
 
     killer.start()
     try:
-        Pool(workers).run(tasks)
-    except StopCalculationError:
+        remote_runner.Pool(workers).run(tasks)
+    except remote_runner.StopCalculationError:
         pass
     else:
         assert False, "Excepted StopCalculationError exception"
