@@ -9,7 +9,7 @@ class ChangeDirectory:
 
     def __init__(self, dirname: Path = None):
         assert threading.current_thread() is threading.main_thread()
-        assert dirname.is_dir()
+        assert dirname is None or dirname.is_dir()
 
         if dirname is None:
             dirname = Path.cwd().absolute()
