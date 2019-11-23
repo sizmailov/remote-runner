@@ -34,7 +34,7 @@ class Task:
         tmp = Path(f"{filename}.bak")
 
         with tmp.open('wb') as out:
-            self.state_filename = filename.name
+            self.state_filename = Path(filename.name)
             dill.dump(self, out)
             out.close()
         tmp.rename(filename)
@@ -58,12 +58,6 @@ class Task:
 
 class Worker:
     def run(self, task: Task):
-        raise NotImplementedError()
-
-    def stage_in(self, task: Task):
-        raise NotImplementedError()
-
-    def stage_out(self, task: Task):
         raise NotImplementedError()
 
 
@@ -96,7 +90,54 @@ Stderr:
 """
 
 
-class SSHWorker(Worker):
+class RemoteWorker(Worker):
+
+    def stage_in(self, task: Task):
+        raise NotImplementedError()
+
+    def stage_out(self, task: Task):
+        raise NotImplementedError()
+
+    def run(self, task: Task):
+        _logger(self).info(f"{self}:{task}")
+        self.stage_in(task)
+        try:
+            self.run_remotely(task)
+        finally:
+            self.stage_out(task)
+
+    def run_remotely(self, task: Task):
+        self.start_remote_script(task)
+        _logger(self).info(f"{self}:{task} started")
+
+        sleep_time = 0.5
+        max_sleep_time = 30
+
+        try:
+            with self.remote_watcher(task):
+                while self.remote_script_is_running():
+                    time.sleep(sleep_time)
+                    sleep_time = min(max_sleep_time, sleep_time * 2)
+
+        except Exception as e:
+            _logger(self).error(f"Exception occurred during remote task processing {e}")
+            self.kill_remote_script()
+            raise
+
+    def remote_watcher(self, task: Task):
+        raise NotImplementedError()
+
+    def remote_script_is_running(self):
+        raise NotImplementedError()
+
+    def start_remote_script(self, task):
+        raise NotImplementedError()
+
+    def kill_remote_script(self):
+        raise NotImplementedError()
+    
+
+class SSHWorker(RemoteWorker):
     ssh_config_file = "~/.ssh/config"
     rsync_to_remote_args = ['-a']
     rsync_to_local_args = ['-a']
@@ -185,14 +226,6 @@ class SSHWorker(Worker):
         self.rsync(self.rsync_to_local_args, f"{self.host}:{remote}/", f"{local}/", )
         return remote
 
-    def run(self, task: Task):
-        _logger(self).info(f"{self}:{task}")
-        self.stage_in(task)
-        try:
-            self.run_remotely(task)
-        finally:
-            self.stage_out(task)
-
     def remote_script_is_running(self):
         assert self.remote_script_id is not None
         ecode, stdout, stderr = self.remote_call(["ps", "-p", self.remote_script_id, "-o", "comm="])
@@ -220,24 +253,6 @@ class SSHWorker(Worker):
             total += sleep_time
             sleep_time = min(max_sleep_time, sleep_time * 2)
 
-    def run_remotely(self, task: Task):
-        self.start_remote_script(task)
-        _logger(self).info(f"{self}:{task} started")
-
-        sleep_time = 0.5
-        max_sleep_time = 30
-
-        try:
-            with self.remote_watcher(task):
-                while self.remote_script_is_running():
-                    time.sleep(sleep_time)
-                    sleep_time = min(max_sleep_time, sleep_time * 2)
-
-        except Exception as e:
-            _logger(self).error(f"Exception occurred during remote task processing {e}")
-            self.kill_remote_script()
-            raise
-
     def remote_watcher(self, task: Task):
         return NullContextManager()
 
@@ -250,30 +265,6 @@ class SSHWorker(Worker):
 
         remote_pid = int(stdout.decode('utf-8').splitlines()[-1])
         self.remote_script_id = remote_pid
-
-    def generate_remote_script(self, task):
-        script = f"""
-source /etc/profile
-source ~/.profile
-
-{self.remote_user_rc}
-
-WORK_DIR={self.remote_wd(task.wd)}
-cd "$WORK_DIR"
-
-nohup python -c "
-import remote_runner
-from remote_runner import *
-
-with RaiseOnSignals():
-    task = Task.load(Path('{shlex.quote(str(task.state_filename))}'))
-    worker = LocalWorker()
-    worker.run(task)
-" > .startup.stdout 2>.startup.stderr &
-echo $!
-
-"""
-        return script
 
     @property
     def ssh(self):
@@ -371,12 +362,6 @@ class LocalWorker(Worker):
                 raise
             else:
                 exit_code.write("0")
-
-    def stage_in(self, task: Task):
-        pass
-
-    def stage_out(self, task: Task):
-        pass
 
 
 class Runner(multiprocessing.Process):
