@@ -107,18 +107,24 @@ class RemoteWorker(Worker):
 
     def run(self, task: Task):
         _logger(self).info(f"{self}:{task}")
+        _logger(self).debug(f"{self}:{task} stage in BEGIN")
         self.stage_in(task)
+        _logger(self).debug(f"{self}:{task} stage in END ")
         try:
+            _logger(self).debug(f"{self}:{task} run remotely BEGIN")
             self.run_remotely(task)
+            _logger(self).debug(f"{self}:{task} run remotely END")
         finally:
+            _logger(self).debug(f"{self}:{task} stage out BEGIN")
             self.stage_out(task)
+            _logger(self).debug(f"{self}:{task} stage out END")
 
     def run_remotely(self, task: Task):
         self.start_remote_script(task)
         _logger(self).info(f"{self}:{task} started")
 
         sleep_time = 0.5
-        max_sleep_time = 30
+        max_sleep_time = 15
 
         try:
             with self.remote_watcher(task):
@@ -128,6 +134,7 @@ class RemoteWorker(Worker):
 
         except Exception as e:
             _logger(self).error(f"Exception occurred during remote task processing {e}")
+            _logger(self).debug(f"Going to kill remote script")
             self.kill_remote_script()
             raise
 
@@ -260,6 +267,7 @@ class SSHWorker(RemoteWorker):
         return ecode == 0
 
     def kill_remote_script(self, timeout=3):
+        _logger(self).debug(f"Going to kill {self.remote_script_id}")
         assert self.remote_script_id is not None
 
         self._kill_and_wait(15, timeout)
@@ -444,15 +452,30 @@ class PbsWorker(RemoteWorker):
         self.remote_script_id = stdout.strip()
 
     def kill_remote_script(self):
-        if self.get_job_state() in ["Q", "R"]:
+        job_state = self.get_job_state()
+        _logger(self).debug(f"PBS job {self.remote_script_id} has status {job_state}")
+
+        if job_state in ["Q", "R"]:
+            _logger(self).debug(f"Trying to kill job {self.remote_script_id}")
             ecode, stdout, stderr = self.pbs_server_call(["qdel", self.remote_script_id])
+
             if ecode not in [0, 170] and self.get_job_state() in ["R", "Q"]:
+                _logger(self).error(f"qsub returned with {ecode}")
                 raise RuntimeError(f"Can't qdel job {self.remote_script_id}")
+
+            _logger(self).debug(f"qdel {self.remote_script_id} - success")
+
+            max_time_to_sleep = 10.0
+            time_to_sleep = 0.1
             while self.get_job_state() not in ["C", None]:
-                time.sleep(1.0)  # todo: remove magic constant
+                _logger(self).debug(f"Waiting for {self.remote_script_id} termination...")
+                time.sleep(time_to_sleep)  # todo: remove magic constant
+                time_to_sleep = min(max_time_to_sleep, time_to_sleep * 2)
 
     def get_job_state(self):
         from .PBS import QStatParser
+        if self.remote_script_id is None:
+            return None
         qstat_parser = QStatParser()
         ecode, stdout, stderr = self.pbs_server_call(["qstat", "-f", self.remote_script_id])
         if ecode != 0:
@@ -487,7 +510,7 @@ source ~/.profile
 WORK_DIR={self.remote_wd(task.wd)}
 cd "$WORK_DIR"
 
-python -c "
+exec python -c "
 import remote_runner
 from remote_runner.errors import RaiseOnSignals
 from pathlib import Path
@@ -574,8 +597,8 @@ class Pool:
             finally:
                 for runner in stated_runners:
                     if runner.is_alive():
+                        _logger(self).warning(f"Sending SIGTERM to {runner} from {self}")
                         runner.terminate()
-                        _logger(self).warning(f"{runner} SIGTERM send")
 
                 for runner in stated_runners:
                     runner.join()
