@@ -1,6 +1,6 @@
 from .utility import ChangeDirectory
 import time
-from typing import List, Union
+from typing import List, Union, Tuple
 import queue
 import hashlib
 import threading
@@ -34,7 +34,7 @@ class Task:
         tmp = Path(f"{filename}.bak")
 
         with tmp.open('wb') as out:
-            self.state_filename = filename.name
+            self.state_filename = Path(filename.name)
             dill.dump(self, out)
             out.close()
         tmp.rename(filename)
@@ -55,15 +55,16 @@ class Task:
     def __str__(self):
         return f"{self.__class__.__name__}(wd='{self.wd}')"
 
+    @property
+    def name_or_wd(self) -> str:
+        try:
+            return self.name
+        except AttributeError:
+            return self.wd.name
+
 
 class Worker:
     def run(self, task: Task):
-        raise NotImplementedError()
-
-    def stage_in(self, task: Task):
-        raise NotImplementedError()
-
-    def stage_out(self, task: Task):
         raise NotImplementedError()
 
 
@@ -96,27 +97,100 @@ Stderr:
 """
 
 
-class SSHWorker(Worker):
+class RemoteWorker(Worker):
+    remote_user_rc = "# User remote initialization script"
+
+    def __init__(self, remote_user_rc: str = None):
+        if remote_user_rc is not None:
+            self.remote_user_rc = remote_user_rc
+
+    def stage_in(self, task: Task):
+        raise NotImplementedError()
+
+    def stage_out(self, task: Task):
+        raise NotImplementedError()
+
+    def run(self, task: Task):
+        _logger(self).info(f"{self}:{task}")
+        _logger(self).debug(f"{self}:{task} stage in BEGIN")
+        self.stage_in(task)
+        _logger(self).debug(f"{self}:{task} stage in END ")
+        try:
+            _logger(self).debug(f"{self}:{task} run remotely BEGIN")
+            self.run_remotely(task)
+            _logger(self).debug(f"{self}:{task} run remotely END")
+        finally:
+            _logger(self).debug(f"{self}:{task} stage out BEGIN")
+            self.stage_out(task)
+            _logger(self).debug(f"{self}:{task} stage out END")
+
+    def run_remotely(self, task: Task):
+        self.start_remote_script(task)
+        _logger(self).info(f"{self}:{task} started")
+
+        sleep_time = 0.5
+        max_sleep_time = 15
+
+        try:
+            with self.remote_watcher(task):
+                while self.remote_script_is_running():
+                    time.sleep(sleep_time)
+                    sleep_time = min(max_sleep_time, sleep_time * 2)
+
+        except Exception as e:
+            _logger(self).error(f"Exception occurred during remote task processing {e}")
+            _logger(self).debug(f"Going to kill remote script")
+            self.kill_remote_script()
+            raise
+
+    def remote_watcher(self, task: Task):
+        raise NotImplementedError()
+
+    def remote_script_is_running(self):
+        raise NotImplementedError()
+
+    def start_remote_script(self, task):
+        raise NotImplementedError()
+
+    def kill_remote_script(self):
+        raise NotImplementedError()
+
+    def generate_remote_script(self, task: Task):
+        raise NotImplementedError()
+
+
+class SSHWorker(RemoteWorker):
     ssh_config_file = "~/.ssh/config"
     rsync_to_remote_args = ['-a']
     rsync_to_local_args = ['-a']
-    remote_user_rc = "# User remote initialization script"
 
-    def __init__(self, host: str, remote_root: Path = None, remote_user_rc: str = None,
-                 rsync_to_remote_args: List[str] = None, rsync_to_local_args: List[str] = None):
+    def __init__(self, host: str, remote_root: Path = None,
+                 rsync_to_remote_args: List[str] = None, rsync_to_local_args: List[str] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         if rsync_to_local_args is not None:
             self.rsync_to_local_args = rsync_to_local_args
         if rsync_to_remote_args is not None:
             self.rsync_to_remote_args = rsync_to_remote_args
-        if remote_user_rc is not None:
-            self.remote_user_rc = remote_user_rc
         if remote_root is None:
             remote_root = Path("~/remote_tmp_root")
 
         self.host = host
-        self.remote_root: Path = remote_root
+        self._remote_root: Path = remote_root
         self.remote_script_id = None
         self._ssh = None
+
+    @property
+    def remote_root(self):
+        if str(self._remote_root).startswith("~"):
+            ecode, stdout, stderr = self.remote_call("echo ~", output_encoding="utf-8")
+            if ecode == 0:
+                remote_home = stdout.strip()
+                self._remote_root = Path(str(self._remote_root).replace("~", remote_home, 1))
+                _logger(self).debug(f"Remote home is `{self._remote_root}`")
+            else:
+                raise RuntimeError("Can't find remote home")
+
+        return self._remote_root
 
     def __str__(self):
         return f"{self.__class__.__name__}({self.host})"
@@ -133,7 +207,7 @@ class SSHWorker(Worker):
         _logger(cls).info(" ".join(rsync_cmd))
         subprocess.call(rsync_cmd)  # todo: add timeout and retry
 
-    def remote_call(self, cmd: Union[List[str], str], stdin=None, sleep_time=0.05):
+    def remote_call(self, cmd: Union[List[str], str], stdin=None, sleep_time=0.05, output_encoding=None):
         channel = self.ssh.get_transport().open_session()  # type: paramiko.Channel
         if isinstance(cmd, str):
             cmd_line = cmd
@@ -165,6 +239,9 @@ class SSHWorker(Worker):
         while channel.recv_stderr_ready():
             err += channel.recv_stderr(buffer_size)
         exit_code = channel.recv_exit_status()
+        if output_encoding is not None:
+            out = out.decode(output_encoding)
+            err = err.decode(output_encoding)
         return exit_code, out, err
 
     def stage_in(self, task: Task):
@@ -185,14 +262,6 @@ class SSHWorker(Worker):
         self.rsync(self.rsync_to_local_args, f"{self.host}:{remote}/", f"{local}/", )
         return remote
 
-    def run(self, task: Task):
-        _logger(self).info(f"{self}:{task}")
-        self.stage_in(task)
-        try:
-            self.run_remotely(task)
-        finally:
-            self.stage_out(task)
-
     def remote_script_is_running(self):
         assert self.remote_script_id is not None
         ecode, stdout, stderr = self.remote_call(["ps", "-p", self.remote_script_id, "-o", "comm="])
@@ -200,6 +269,7 @@ class SSHWorker(Worker):
         return ecode == 0
 
     def kill_remote_script(self, timeout=3):
+        _logger(self).debug(f"Going to kill {self.remote_script_id}")
         assert self.remote_script_id is not None
 
         self._kill_and_wait(15, timeout)
@@ -220,24 +290,6 @@ class SSHWorker(Worker):
             total += sleep_time
             sleep_time = min(max_sleep_time, sleep_time * 2)
 
-    def run_remotely(self, task: Task):
-        self.start_remote_script(task)
-        _logger(self).info(f"{self}:{task} started")
-
-        sleep_time = 0.5
-        max_sleep_time = 30
-
-        try:
-            with self.remote_watcher(task):
-                while self.remote_script_is_running():
-                    time.sleep(sleep_time)
-                    sleep_time = min(max_sleep_time, sleep_time * 2)
-
-        except Exception as e:
-            _logger(self).error(f"Exception occurred during remote task processing {e}")
-            self.kill_remote_script()
-            raise
-
     def remote_watcher(self, task: Task):
         return NullContextManager()
 
@@ -251,7 +303,7 @@ class SSHWorker(Worker):
         remote_pid = int(stdout.decode('utf-8').splitlines()[-1])
         self.remote_script_id = remote_pid
 
-    def generate_remote_script(self, task):
+    def generate_remote_script(self, task: Task):
         script = f"""
 source /etc/profile
 source ~/.profile
@@ -345,8 +397,8 @@ class SyncRemoteFolder:
 
 class SyncSSHWorker(SSHWorker):
     def __init__(self, sync_period: float, *args, **kwargs):
-        self.sync_period = sync_period
         super().__init__(*args, **kwargs)
+        self.sync_period = sync_period
 
     def remote_watcher(self, task: Task):
         return SyncRemoteFolder(worker=self, task=task, sync_period=self.sync_period)
@@ -372,11 +424,170 @@ class LocalWorker(Worker):
             else:
                 exit_code.write("0")
 
+
+class PbsWorker(RemoteWorker):
+
+    def generate_remote_script(self, task: Task):
+        raise NotImplementedError()
+
+    def __init__(self, resources: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.resources = resources
+        self.remote_script_id = None
+
+    def pbs_server_call(self, cmd: List[str], stdin: str = None) -> Tuple[int, str, str]:
+        raise NotImplementedError()
+
+    def remote_watcher(self, task: Task):
+        raise NotImplementedError()
+
+    def remote_script_is_running(self):
+        return self.get_job_state() in ["Q", "R", "E"]  # queued, running or exiting
+
+    def start_remote_script(self, task: Task):
+        qsub_command = self.qsub_command(task)
+        ecode, stdout, stderr = self.pbs_server_call(qsub_command,
+                                                     stdin=self.generate_remote_script(task))
+        if ecode != 0:
+            raise RuntimeError(f"Can't send job {qsub_command}\n"
+                               f"Stderr:\n {stderr}")
+        self.remote_script_id = stdout.strip()
+
+    def kill_remote_script(self):
+        job_state = self.get_job_state()
+        _logger(self).debug(f"PBS job {self.remote_script_id} has status {job_state}")
+
+        if job_state in ["Q", "R"]:
+            _logger(self).debug(f"Trying to kill job {self.remote_script_id}")
+            ecode, stdout, stderr = self.pbs_server_call(["qdel", self.remote_script_id])
+
+            if ecode not in [0, 170] and self.get_job_state() in ["R", "Q"]:
+                _logger(self).error(f"qsub returned with {ecode}")
+                raise RuntimeError(f"Can't qdel job {self.remote_script_id}")
+
+            _logger(self).debug(f"qdel {self.remote_script_id} - success")
+
+            max_time_to_sleep = 10.0
+            time_to_sleep = 0.1
+            while self.get_job_state() not in ["C", None]:
+                _logger(self).debug(f"Waiting for {self.remote_script_id} termination...")
+                time.sleep(time_to_sleep)  # todo: remove magic constant
+                time_to_sleep = min(max_time_to_sleep, time_to_sleep * 2)
+
+    def get_job_state(self):
+        from .pbs import QStatParser
+        if self.remote_script_id is None:
+            return None
+        qstat_parser = QStatParser()
+        ecode, stdout, stderr = self.pbs_server_call(["qstat", "-f", self.remote_script_id])
+        if ecode != 0:
+            return None
+        try:
+            qstat = qstat_parser.parse(stdout)
+            return qstat[self.remote_script_id]["job_state"]
+        except KeyError:
+            return None
+
+    def qsub_command(self, task):
+        return ["qsub", "-l", self.resources, "-N", task.name_or_wd]
+
+
+class SSHPbsWorker(PbsWorker, SSHWorker):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def pbs_server_call(self, cmd: List[str], stdin=None) -> Tuple[int, bytes, bytes]:
+        return self.remote_call(cmd, stdin=stdin, output_encoding="utf-8")
+
+    def remote_watcher(self, task: Task):
+        return NullContextManager()
+
+    def generate_remote_script(self, task: Task):
+        script = f"""
+source /etc/profile
+source ~/.profile
+
+{self.remote_user_rc}
+
+WORK_DIR={self.remote_wd(task.wd)}
+cd "$WORK_DIR"
+
+exec python -c "
+import remote_runner
+from remote_runner.errors import RaiseOnSignals
+from pathlib import Path
+
+with RaiseOnSignals():
+    task = remote_runner.Task.load(Path('{shlex.quote(str(task.state_filename))}'))
+    worker = remote_runner.LocalWorker()
+    worker.run(task)
+"
+"""
+        return script
+
+    def qsub_command(self, task):
+        return super().qsub_command(task) + [
+            '-e', self.remote_wd(task.wd) / ".pbs.stderr",
+            '-o', self.remote_wd(task.wd) / ".pbs.stdout"
+        ]
+
+
+class LocalPbsWorker(PbsWorker):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def generate_remote_script(self, task: Task):
+        script = f"""
+source /etc/profile
+source ~/.profile
+
+{self.remote_user_rc}
+
+WORK_DIR={task.wd}
+cd "$WORK_DIR"
+
+exec python -c "
+import remote_runner
+from remote_runner.errors import RaiseOnSignals
+from pathlib import Path
+
+with RaiseOnSignals():
+    task = remote_runner.Task.load(Path('{shlex.quote(str(task.state_filename))}'))
+    worker = remote_runner.LocalWorker()
+    worker.run(task)
+"
+    """
+        return script
+
+    def pbs_server_call(self, cmd: List[str], stdin: str = None) -> Tuple[int, str, str]:
+        if stdin is not None:
+            inp = subprocess.PIPE
+            stdin = stdin.encode('utf-8')
+        else:
+            inp = None
+        proc = subprocess.Popen(cmd, stdin=inp, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        stdout, stderr = proc.communicate(input=stdin)
+        if not stdout:
+            stdout = b""
+        if not stderr:
+            stderr = b""
+        return proc.returncode, stdout.decode("utf-8"), stderr.decode("utf-8")
+
+    def remote_watcher(self, task: Task):
+        return NullContextManager()
+
     def stage_in(self, task: Task):
         pass
 
     def stage_out(self, task: Task):
         pass
+
+    def qsub_command(self, task):
+        return super().qsub_command(task) + [
+            '-e', task.wd / ".pbs.stderr",
+            '-o', task.wd / ".pbs.stdout"
+        ]
 
 
 class Runner(multiprocessing.Process):
@@ -444,8 +655,8 @@ class Pool:
             finally:
                 for runner in stated_runners:
                     if runner.is_alive():
+                        _logger(self).warning(f"Sending SIGTERM to {runner} from {self}")
                         runner.terminate()
-                        _logger(self).warning(f"{runner} SIGTERM send")
 
                 for runner in stated_runners:
                     runner.join()
