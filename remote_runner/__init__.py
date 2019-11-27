@@ -98,7 +98,6 @@ Stderr:
 
 
 class RemoteWorker(Worker):
-
     remote_user_rc = "# User remote initialization script"
 
     def __init__(self, remote_user_rc: str = None):
@@ -561,12 +560,15 @@ with RaiseOnSignals():
     """
         return script
 
-    def pbs_server_call(self, cmd: List[str], stdin=None) -> Tuple[int, str, str]:
-        import io
-        if isinstance(stdin, str):
-            stdin = io.StringIO(stdin)
-        completed = subprocess.run(cmd, stdin=stdin)
-        return completed.returncode, completed.stdout.decode("utf-8"), completed.stderr.decode("utf-8")
+    def pbs_server_call(self, cmd: List[str], stdin:str=None) -> Tuple[int, str, str]:
+        if stdin is not None:
+            inp = subprocess.PIPE
+            stdin = stdin.encode('utf-8')
+        else:
+            inp = None
+        proc = subprocess.Popen(cmd, stdin=inp)
+        stdout, stderr = proc.communicate(input=stdin)
+        return proc.returncode, stdout.decode("utf-8"), stderr.decode("utf-8")
 
     def remote_watcher(self, task: Task):
         return NullContextManager()
