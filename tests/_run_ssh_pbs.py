@@ -4,7 +4,7 @@ from pathlib import Path
 import remote_runner
 import logging
 
-# logging.basicConfig(level=logging.DEBUG)
+remote_runner.log_to("remote-runner.log", level=logging.DEBUG)
 
 class MyTask(remote_runner.Task):
 
@@ -18,7 +18,7 @@ class MyTask(remote_runner.Task):
         import socket
         import time
         print(self.name)
-        time.sleep(30)
+        time.sleep(5)
         print(socket.gethostname())
 
 
@@ -35,6 +35,8 @@ with remote_runner.utility.ChangeDirectory(Path("TMP")):
             remote_runner.LocalPbsWorker(resources="nodes=1:ppn=1", remote_user_rc="""
 unset PYTHONPATH
 source ~/venv-3.8/bin/activate
+python --version
+pip list -v 
 """)
         ]
 
@@ -43,14 +45,20 @@ source ~/venv-3.8/bin/activate
     stdout_1 = Path("one/stdout").open().read()
     stdout_2 = Path("two/stdout").open().read()
 
+
     assert "one" in stdout_1
     assert "two" in stdout_2
 
     assert "bionmr-mom-00" in stdout_1
     assert "bionmr-mom-00" in stdout_2
 
+    pbs_stdout_2 = Path("two/.pbs.stdout").open().read()
+    assert pbs_stdout_2.startswith("Python 3.")
+    assert "remote-runner" in pbs_stdout_2
+
     assert "" == Path("one/stderr").open().read()
     assert "" == Path("two/stderr").open().read()
+    assert "" == Path("two/.pbs.stderr").open().read()
 
     assert 0 == int(Path("one/exit_code").open().read().strip())
     assert 0 == int(Path("two/exit_code").open().read().strip())
