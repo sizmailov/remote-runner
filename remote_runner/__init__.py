@@ -534,6 +534,9 @@ with RaiseOnSignals():
 
 class LocalPbsWorker(PbsWorker):
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
     def generate_remote_script(self, task: Task):
         script = f"""
 source /etc/profile
