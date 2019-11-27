@@ -433,7 +433,7 @@ class PbsWorker(RemoteWorker):
         self.resources = resources
         self.remote_script_id = None
 
-    def pbs_server_call(self, cmd: List[str], stdin=None) -> Tuple[int, str, str]:
+    def pbs_server_call(self, cmd: List[str], stdin:str=None) -> Tuple[int, str, str]:
         raise NotImplementedError()
 
     def remote_watcher(self, task: Task):
@@ -473,7 +473,7 @@ class PbsWorker(RemoteWorker):
                 time_to_sleep = min(max_time_to_sleep, time_to_sleep * 2)
 
     def get_job_state(self):
-        from .PBS import QStatParser
+        from .pbs import QStatParser
         if self.remote_script_id is None:
             return None
         qstat_parser = QStatParser()
@@ -530,6 +530,46 @@ with RaiseOnSignals():
                 '-e', self.remote_wd(task.wd) / ".pbs.stderr",
                 '-o', self.remote_wd(task.wd) / ".pbs.stdout"
                 ]
+
+
+class LocalPbsWorker(PbsWorker):
+
+    def generate_remote_script(self, task: Task):
+        script = f"""
+source /etc/profile
+source ~/.profile
+
+WORK_DIR={task.wd}
+cd "$WORK_DIR"
+
+exec python -c "
+import remote_runner
+from remote_runner.errors import RaiseOnSignals
+from pathlib import Path
+
+with RaiseOnSignals():
+    task = remote_runner.Task.load(Path('{shlex.quote(str(task.state_filename))}'))
+    worker = remote_runner.LocalWorker()
+    worker.run(task)
+"
+    """
+        return script
+
+    def pbs_server_call(self, cmd: List[str], stdin=None) -> Tuple[int, str, str]:
+        import io
+        if isinstance(stdin, str):
+            stdin = io.StringIO(stdin)
+        completed = subprocess.run(cmd, stdin=stdin)
+        return completed.returncode, completed.stdout.decode("utf-8"), completed.stderr.decode("utf-8")
+
+    def remote_watcher(self, task: Task):
+        return NullContextManager()
+
+    def stage_in(self, task: Task):
+        pass
+
+    def stage_out(self, task: Task):
+        pass
 
 
 class Runner(multiprocessing.Process):
