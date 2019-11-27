@@ -1,5 +1,6 @@
 import re
 
+
 class QStatParser:
     def __init__(self):
         job_attribute_line_regex = r" +(?P<attr>[\w._]+) = (?P<value>[^\n]*)\n"
