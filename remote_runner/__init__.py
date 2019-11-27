@@ -1,6 +1,6 @@
 from .utility import ChangeDirectory
 import time
-from typing import List, Union
+from typing import List, Union, Tuple
 import queue
 import hashlib
 import threading
@@ -54,6 +54,13 @@ class Task:
 
     def __str__(self):
         return f"{self.__class__.__name__}(wd='{self.wd}')"
+
+    @property
+    def name_or_wd(self) -> str:
+        try:
+            return self.name
+        except AttributeError:
+            return self.wd.name
 
 
 class Worker:
@@ -135,7 +142,10 @@ class RemoteWorker(Worker):
 
     def kill_remote_script(self):
         raise NotImplementedError()
-    
+
+    def generate_remote_script(self, task: Task):
+        raise NotImplementedError()
+
 
 class SSHWorker(RemoteWorker):
     ssh_config_file = "~/.ssh/config"
@@ -144,7 +154,8 @@ class SSHWorker(RemoteWorker):
     remote_user_rc = "# User remote initialization script"
 
     def __init__(self, host: str, remote_root: Path = None, remote_user_rc: str = None,
-                 rsync_to_remote_args: List[str] = None, rsync_to_local_args: List[str] = None):
+                 rsync_to_remote_args: List[str] = None, rsync_to_local_args: List[str] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         if rsync_to_local_args is not None:
             self.rsync_to_local_args = rsync_to_local_args
         if rsync_to_remote_args is not None:
@@ -155,9 +166,22 @@ class SSHWorker(RemoteWorker):
             remote_root = Path("~/remote_tmp_root")
 
         self.host = host
-        self.remote_root: Path = remote_root
+        self._remote_root: Path = remote_root
         self.remote_script_id = None
         self._ssh = None
+
+    @property
+    def remote_root(self):
+        if str(self._remote_root).startswith("~"):
+            ecode, stdout, stderr = self.remote_call("echo ~", output_encoding="utf-8")
+            if ecode == 0:
+                remote_home = stdout.strip()
+                self._remote_root = Path(str(self._remote_root).replace("~", remote_home, 1))
+                _logger(self).debug(f"Remote home is `{self._remote_root}`")
+            else:
+                raise RuntimeError("Can't find remote home")
+
+        return self._remote_root
 
     def __str__(self):
         return f"{self.__class__.__name__}({self.host})"
@@ -174,7 +198,7 @@ class SSHWorker(RemoteWorker):
         _logger(cls).info(" ".join(rsync_cmd))
         subprocess.call(rsync_cmd)  # todo: add timeout and retry
 
-    def remote_call(self, cmd: Union[List[str], str], stdin=None, sleep_time=0.05):
+    def remote_call(self, cmd: Union[List[str], str], stdin=None, sleep_time=0.05, output_encoding=None):
         channel = self.ssh.get_transport().open_session()  # type: paramiko.Channel
         if isinstance(cmd, str):
             cmd_line = cmd
@@ -206,6 +230,9 @@ class SSHWorker(RemoteWorker):
         while channel.recv_stderr_ready():
             err += channel.recv_stderr(buffer_size)
         exit_code = channel.recv_exit_status()
+        if output_encoding is not None:
+            out = out.decode(output_encoding)
+            err = err.decode(output_encoding)
         return exit_code, out, err
 
     def stage_in(self, task: Task):
@@ -265,6 +292,30 @@ class SSHWorker(RemoteWorker):
 
         remote_pid = int(stdout.decode('utf-8').splitlines()[-1])
         self.remote_script_id = remote_pid
+
+    def generate_remote_script(self, task: Task):
+        script = f"""
+source /etc/profile
+source ~/.profile
+
+{self.remote_user_rc}
+
+WORK_DIR={self.remote_wd(task.wd)}
+cd "$WORK_DIR"
+
+nohup python -c "
+import remote_runner
+from remote_runner import *
+
+with RaiseOnSignals():
+    task = Task.load(Path('{shlex.quote(str(task.state_filename))}'))
+    worker = LocalWorker()
+    worker.run(task)
+" > .startup.stdout 2>.startup.stderr &
+echo $!
+
+"""
+        return script
 
     @property
     def ssh(self):
@@ -336,8 +387,8 @@ class SyncRemoteFolder:
 
 class SyncSSHWorker(SSHWorker):
     def __init__(self, sync_period: float, *args, **kwargs):
-        self.sync_period = sync_period
         super().__init__(*args, **kwargs)
+        self.sync_period = sync_period
 
     def remote_watcher(self, task: Task):
         return SyncRemoteFolder(worker=self, task=task, sync_period=self.sync_period)
@@ -362,6 +413,100 @@ class LocalWorker(Worker):
                 raise
             else:
                 exit_code.write("0")
+
+
+class PbsWorker(RemoteWorker):
+
+    def generate_remote_script(self, task: Task):
+        raise NotImplementedError()
+
+    def __init__(self, resources: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.resources = resources
+        self.remote_script_id = None
+
+    def pbs_server_call(self, cmd: List[str], stdin=None) -> Tuple[int, str, str]:
+        raise NotImplementedError()
+
+    def remote_watcher(self, task: Task):
+        raise NotImplementedError()
+
+    def remote_script_is_running(self):
+        return self.get_job_state() in ["Q", "R", "E"]  # queued, running or exiting
+
+    def start_remote_script(self, task: Task):
+        qsub_command = self.qsub_command(task)
+        ecode, stdout, stderr = self.pbs_server_call(qsub_command,
+                                                     stdin=self.generate_remote_script(task))
+        if ecode != 0:
+            raise RuntimeError(f"Can't send job {qsub_command}\n"
+                               f"Stderr:\n {stderr}")
+        self.remote_script_id = stdout.strip()
+
+    def kill_remote_script(self):
+        if self.get_job_state() in ["Q", "R"]:
+            ecode, stdout, stderr = self.pbs_server_call(["qdel", self.remote_script_id])
+            if ecode not in [0, 170] and self.get_job_state() in ["R", "Q"]:
+                raise RuntimeError(f"Can't qdel job {self.remote_script_id}")
+            while self.get_job_state() not in ["C", None]:
+                time.sleep(1.0)  # todo: remove magic constant
+
+    def get_job_state(self):
+        from .PBS import QStatParser
+        qstat_parser = QStatParser()
+        ecode, stdout, stderr = self.pbs_server_call(["qstat", "-f", self.remote_script_id])
+        if ecode != 0:
+            return None
+        try:
+            qstat = qstat_parser.parse(stdout)
+            return qstat[self.remote_script_id]["job_state"]
+        except KeyError:
+            return None
+
+    def qsub_command(self, task):
+        return ["qsub", "-l", self.resources, "-N", task.name_or_wd]
+
+
+class SSHPbsWorker(PbsWorker, SSHWorker):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def pbs_server_call(self, cmd: List[str], stdin=None) -> Tuple[int, bytes, bytes]:
+        return self.remote_call(cmd, stdin=stdin, output_encoding="utf-8")
+
+    def remote_watcher(self, task: Task):
+        return NullContextManager()
+
+    def generate_remote_script(self, task: Task):
+        script = f"""
+source /etc/profile
+source ~/.profile
+
+{self.remote_user_rc}
+
+WORK_DIR={self.remote_wd(task.wd)}
+cd "$WORK_DIR"
+
+python -c "
+import remote_runner
+from remote_runner.errors import RaiseOnSignals
+from pathlib import Path
+
+with RaiseOnSignals():
+    task = remote_runner.Task.load(Path('{shlex.quote(str(task.state_filename))}'))
+    worker = remote_runner.LocalWorker()
+    worker.run(task)
+"
+"""
+        return script
+
+    def qsub_command(self, task):
+        return ["qsub",
+                "-l", self.resources,
+                "-N", task.name_or_wd,
+                '-e', self.remote_wd(task.wd) / ".pbs.stderr",
+                '-o', self.remote_wd(task.wd) / ".pbs.stdout"
+                ]
 
 
 class Runner(multiprocessing.Process):
