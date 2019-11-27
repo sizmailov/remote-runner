@@ -566,7 +566,7 @@ with RaiseOnSignals():
             stdin = stdin.encode('utf-8')
         else:
             inp = None
-        proc = subprocess.Popen(cmd, stdin=inp)
+        proc = subprocess.Popen(cmd, stdin=inp, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
         stdout, stderr = proc.communicate(input=stdin)
         if not stdout:
             stdout = b""
