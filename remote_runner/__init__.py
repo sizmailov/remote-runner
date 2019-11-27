@@ -568,6 +568,10 @@ with RaiseOnSignals():
             inp = None
         proc = subprocess.Popen(cmd, stdin=inp)
         stdout, stderr = proc.communicate(input=stdin)
+        if not stdout:
+            stdout = b""
+        if not stderr:
+            stderr = b""
         return proc.returncode, stdout.decode("utf-8"), stderr.decode("utf-8")
 
     def remote_watcher(self, task: Task):
