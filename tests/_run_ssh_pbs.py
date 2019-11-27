@@ -32,7 +32,7 @@ with remote_runner.utility.ChangeDirectory(Path("TMP")):
 
     with remote_runner.utility.ChangeDirectory(wd):  # cd back to avoid .coverage.* files loss
         workers = [
-            remote_runner.SSHPbsWorker(host="bionmr", resources="nodes=1:ppn=1", remote_user_rc="""
+            remote_runner.LocalPbsWorker(resources="nodes=1:ppn=1", remote_user_rc="""
 unset PYTHONPATH
 source ~/venv-3.8/bin/activate
 """)

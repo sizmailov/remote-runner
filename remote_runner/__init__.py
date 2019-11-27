@@ -99,6 +99,12 @@ Stderr:
 
 class RemoteWorker(Worker):
 
+    remote_user_rc = "# User remote initialization script"
+
+    def __init__(self, remote_user_rc: str = None):
+        if remote_user_rc is not None:
+            self.remote_user_rc = remote_user_rc
+
     def stage_in(self, task: Task):
         raise NotImplementedError()
 
@@ -158,17 +164,14 @@ class SSHWorker(RemoteWorker):
     ssh_config_file = "~/.ssh/config"
     rsync_to_remote_args = ['-a']
     rsync_to_local_args = ['-a']
-    remote_user_rc = "# User remote initialization script"
 
-    def __init__(self, host: str, remote_root: Path = None, remote_user_rc: str = None,
+    def __init__(self, host: str, remote_root: Path = None,
                  rsync_to_remote_args: List[str] = None, rsync_to_local_args: List[str] = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if rsync_to_local_args is not None:
             self.rsync_to_local_args = rsync_to_local_args
         if rsync_to_remote_args is not None:
             self.rsync_to_remote_args = rsync_to_remote_args
-        if remote_user_rc is not None:
-            self.remote_user_rc = remote_user_rc
         if remote_root is None:
             remote_root = Path("~/remote_tmp_root")
 
