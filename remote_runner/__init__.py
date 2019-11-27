@@ -435,7 +435,7 @@ class PbsWorker(RemoteWorker):
         self.resources = resources
         self.remote_script_id = None
 
-    def pbs_server_call(self, cmd: List[str], stdin:str=None) -> Tuple[int, str, str]:
+    def pbs_server_call(self, cmd: List[str], stdin: str = None) -> Tuple[int, str, str]:
         raise NotImplementedError()
 
     def remote_watcher(self, task: Task):
@@ -526,12 +526,10 @@ with RaiseOnSignals():
         return script
 
     def qsub_command(self, task):
-        return ["qsub",
-                "-l", self.resources,
-                "-N", task.name_or_wd,
-                '-e', self.remote_wd(task.wd) / ".pbs.stderr",
-                '-o', self.remote_wd(task.wd) / ".pbs.stdout"
-                ]
+        return super().qsub_command(task) + [
+            '-e', self.remote_wd(task.wd) / ".pbs.stderr",
+            '-o', self.remote_wd(task.wd) / ".pbs.stdout"
+        ]
 
 
 class LocalPbsWorker(PbsWorker):
@@ -543,6 +541,8 @@ class LocalPbsWorker(PbsWorker):
         script = f"""
 source /etc/profile
 source ~/.profile
+
+{self.remote_user_rc}
 
 WORK_DIR={task.wd}
 cd "$WORK_DIR"
@@ -560,7 +560,7 @@ with RaiseOnSignals():
     """
         return script
 
-    def pbs_server_call(self, cmd: List[str], stdin:str=None) -> Tuple[int, str, str]:
+    def pbs_server_call(self, cmd: List[str], stdin: str = None) -> Tuple[int, str, str]:
         if stdin is not None:
             inp = subprocess.PIPE
             stdin = stdin.encode('utf-8')
@@ -582,6 +582,12 @@ with RaiseOnSignals():
 
     def stage_out(self, task: Task):
         pass
+
+    def qsub_command(self, task):
+        return super().qsub_command(task) + [
+            '-e', task.wd / ".pbs.stderr",
+            '-o', task.wd / ".pbs.stdout"
+        ]
 
 
 class Runner(multiprocessing.Process):
