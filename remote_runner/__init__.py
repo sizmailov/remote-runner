@@ -1,4 +1,4 @@
-from .utility import ChangeDirectory
+from .utility import ChangeDirectory, self_logger as _logger
 import time
 from typing import List, Union, Tuple
 import queue
@@ -11,16 +11,7 @@ import paramiko
 import os
 import shlex
 import dill
-import logging
 from .errors import StopCalculationError, RaiseOnSignals
-
-
-def _logger(self_or_class):
-    if isinstance(self_or_class, type):
-        class_name = self_or_class.__name__
-    else:
-        class_name = self_or_class.__class__.__name__
-    return logging.getLogger(f"{__name__}.{class_name}")
 
 
 class Task:
@@ -664,6 +655,7 @@ class Pool:
 
 
 def log_to(filename: Union[str, Path] = None, mode: str = None, fmt: str = None, level=None):
+    import logging
     if fmt is None:
         fmt = '%(asctime)-15s [%(relativeCreated)7d] ' \
               '%(levelname)8s - %(name)s.%(funcName)s:%(lineno)d - ' \

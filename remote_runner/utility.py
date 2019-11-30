@@ -3,6 +3,7 @@ import tempfile
 import contextlib
 from pathlib import Path
 import threading
+import logging
 
 
 class ChangeDirectory:
@@ -29,3 +30,13 @@ def ChangeToTemporaryDirectory():
     with tempfile.TemporaryDirectory() as temp_dir:
         with ChangeDirectory(Path(temp_dir)):
             yield None
+
+
+def self_logger(self_or_class):
+    if isinstance(self_or_class, type):
+        klass = self_or_class
+    else:
+        klass = self_or_class.__class__
+    class_name = klass.__name__
+    class_module = klass.__module__
+    return logging.getLogger(f"{class_module}.{class_name}")
