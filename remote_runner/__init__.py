@@ -15,6 +15,7 @@ from .errors import StopCalculationError, RaiseOnSignals
 
 
 class Task:
+    _protected_methods = ["run", "save"]
 
     def __init__(self, wd: Path):
         assert wd.is_dir()
@@ -52,6 +53,11 @@ class Task:
             return self.name
         except AttributeError:
             return self.wd.name
+
+    def __setattr__(self, key, value):
+        if key in self._protected_methods and not callable(value):
+            raise RuntimeError(f"Attempting to override Task.{key}() with non-callable attribute")
+        super().__setattr__(key, value)
 
 
 class Worker:
