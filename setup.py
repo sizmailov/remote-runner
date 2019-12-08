@@ -6,7 +6,7 @@ setup(
     maintainer_email="sergei.a.izmailov@gmail.com",
     description="Batch remote execution of python scripts",
     url="https://github.com/sizmailov/remote-runner",
-    version="0.1.2",
+    version="0.2.0",
     long_description=open("README.rst").read(),
     license="BSD",
     install_requires=[

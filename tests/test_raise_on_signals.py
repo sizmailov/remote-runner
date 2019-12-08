@@ -24,7 +24,7 @@ class SelfDoubleKiller(threading.Thread):
 @pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGINT])
 def test_survive_double_kill_15(signum):
     killer = SelfDoubleKiller(0.3, signum)
-    with remote_runner.RaiseOnSignals():
+    with remote_runner.RaiseOnceOnSignals():
         try:
             killer.start()
             time.sleep(1.0)

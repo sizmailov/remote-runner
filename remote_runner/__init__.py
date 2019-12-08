@@ -11,7 +11,7 @@ import paramiko
 import os
 import shlex
 import dill
-from .errors import StopCalculationError, RaiseOnSignals
+from .errors import StopCalculationError, RaiseOnceOnSignals
 
 
 class Task:
@@ -314,7 +314,7 @@ nohup python -c "
 import remote_runner
 from remote_runner import *
 
-with RaiseOnSignals():
+with RaiseOnceOnSignals():
     task = Task.load(Path('{shlex.quote(str(task.state_filename))}'))
     worker = LocalWorker()
     worker.run(task)
@@ -511,10 +511,10 @@ cd "$WORK_DIR"
 
 exec python -c "
 import remote_runner
-from remote_runner.errors import RaiseOnSignals
+from remote_runner.errors import RaiseOnceOnSignals
 from pathlib import Path
 
-with RaiseOnSignals():
+with RaiseOnceOnSignals():
     task = remote_runner.Task.load(Path('{shlex.quote(str(task.state_filename))}'))
     worker = remote_runner.LocalWorker()
     worker.run(task)
@@ -546,10 +546,10 @@ cd "$WORK_DIR"
 
 exec python -c "
 import remote_runner
-from remote_runner.errors import RaiseOnSignals
+from remote_runner.errors import RaiseOnceOnSignals
 from pathlib import Path
 
-with RaiseOnSignals():
+with RaiseOnceOnSignals():
     task = remote_runner.Task.load(Path('{shlex.quote(str(task.state_filename))}'))
     worker = remote_runner.LocalWorker()
     worker.run(task)
@@ -597,7 +597,7 @@ class Runner(multiprocessing.Process):
         return f"{self.__class__.__name__}(worker={self.worker}, name={self.name})"
 
     def run(self):
-        with RaiseOnSignals():
+        with RaiseOnceOnSignals():
             try:
                 while True:
                     _logger(self).info(f"{self} start tasks processing")
@@ -639,7 +639,7 @@ class Pool:
                 task.save(path_to_task_file)
                 tasks_queue.put(path_to_task_file)
             try:
-                with RaiseOnSignals():
+                with RaiseOnceOnSignals():
                     for runner in generate_runners():
                         runner.start()
                         stated_runners.append(runner)

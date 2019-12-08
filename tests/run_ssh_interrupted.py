@@ -67,7 +67,7 @@ with remote_runner.utility.ChangeToTemporaryDirectory():
     killer = SelfKiller(2.0, signal.SIGINT)
     killer.start()
     try:
-        with remote_runner.RaiseOnSignals():
+        with remote_runner.errors.RaiseOnceOnSignals():
             remote_runner.Pool(workers).run(tasks)
     except remote_runner.StopCalculationError:
         pass

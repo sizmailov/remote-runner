@@ -8,29 +8,44 @@ class StopCalculationError(Exception):
         return "StopCalculationError"
 
 
-class RaiseOnSignals:
+class RaiseOnceOnSignals:
+
+    def __init__(self, signums=(signal.SIGTERM, signal.SIGINT), restore_at_exit=False):
+        self.signums = signums
+        self.restore = restore_at_exit
+        self._old_handlers = {}
+        self._fired = False
 
     def __enter__(self):
-        self._raise_on_signals()
+
+        def raise_handler(_signum, _stack_frame):
+
+            # to avoid double raise
+            #
+            # 1) Check _fired flag
+            # 2) uninstall signals
+            #
+            # custom _ignore_handler is used to avoid `int is not callable`
+            # error with signal.SIG_IGN
+
+            if self._fired:
+                self._fired = True
+                return
+
+            for signum in self.signums:
+                signal.signal(signum, RaiseOnceOnSignals._ignore_handler)
+
+            raise StopCalculationError()
+
+        for signum in self.signums:
+            self._old_handlers[signum] = signal.getsignal(signum)
+            signal.signal(signum, raise_handler)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self._reset_to_default()
+        if self.restore:
+            for signum in self.signums:
+                signal.signal(signum, self._old_handlers[signum])
 
     @staticmethod
-    def _handler(signum, stack_frame):
-        try:
-            raise StopCalculationError()
-        finally:
-            # protect from double kill (e.g. accident too many Ctrl-C hits)
-            signal.signal(signal.SIGTERM, signal.SIG_IGN)
-            signal.signal(signal.SIGINT, signal.SIG_IGN)
-
-    @staticmethod
-    def _raise_on_signals(signums=(signal.SIGTERM, signal.SIGINT)):
-        for signum in signums:
-            signal.signal(signum, RaiseOnSignals._handler)
-
-    @staticmethod
-    def _reset_to_default(signums=(signal.SIGTERM, signal.SIGINT)):
-        for signum in signums:
-            signal.signal(signum, signal.SIG_DFL)
+    def _ignore_handler(signum, stack_frame):
+        pass
