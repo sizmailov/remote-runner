@@ -18,6 +18,8 @@ script:
   - coverage combine --append
 after_success:
   - codecov
+after_failure:
+  - cat remote-runner.log
 deploy:
   provider: pypi
   user: __token__

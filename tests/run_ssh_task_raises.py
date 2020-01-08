@@ -3,6 +3,8 @@ from tests.ssh_common import ssh_worker_factory
 import os
 from pathlib import Path
 
+remote_runner.log_to('remote-runner.log', level="DEBUG")
+
 
 class MyExceptionalTask(remote_runner.Task):
 

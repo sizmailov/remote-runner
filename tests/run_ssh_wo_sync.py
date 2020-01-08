@@ -5,6 +5,8 @@ from pathlib import Path
 import remote_runner
 from tests.ssh_common import ssh_worker_factory
 
+remote_runner.log_to('remote-runner.log', level="DEBUG")
+
 
 class MyTask(remote_runner.Task):
 
