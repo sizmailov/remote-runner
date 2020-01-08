@@ -14,7 +14,7 @@ script:
   - flake8
   - python -m pytest
   - mkdir ~/remote_tmp_root
-  - bash travis/run_tests_with_coverage.sh
+  - PYTHONPATH="$PWD" bash travis/run_tests_with_coverage.sh
   - coverage combine --append
 after_success:
   - codecov

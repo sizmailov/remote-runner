@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 
 import remote_runner
-from ssh_common import ssh_worker_factory
+from tests.ssh_common import ssh_worker_factory
 
 
 class MyTask(remote_runner.Task):
