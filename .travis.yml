@@ -14,8 +14,7 @@ script:
   - flake8
   - python -m pytest
   - mkdir ~/remote_tmp_root
-  - set -e; for run_file in tests/run_*.py ; do echo "$run_file"; python -m coverage
-    run --append "$run_file";  done ; set +e;
+  - bash travis/run_tests_with_coverage.sh
   - coverage combine --append
 after_success:
   - codecov
