@@ -10,7 +10,7 @@ before_script:
   - python setup.py install
   - bash travis/enable-ssh-localhost.sh
 script:
-  - python -m pip install flake8 mypy pytest-cov codecov coverage==4.5.4
+  - python -m pip install flake8 mypy pytest-cov codecov
   - flake8
   - python -m pytest
   - mkdir ~/remote_tmp_root
