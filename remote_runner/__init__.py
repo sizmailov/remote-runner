@@ -136,7 +136,7 @@ class RemoteWorker(Worker):
 
         except Exception as e:
             _logger(self).error(f"Exception occurred during remote task processing {e}")
-            _logger(self).debug(f"Going to kill remote script")
+            _logger(self).debug("Going to kill remote script")
             self.kill_remote_script()
             raise
 
