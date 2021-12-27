@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 import paramiko
 import os
+import re
 import shlex
 import dill
 from .errors import StopCalculationError, RaiseOnceOnSignals
@@ -585,6 +586,121 @@ with RaiseOnceOnSignals():
             '-e', task.wd / ".pbs.stderr",
             '-o', task.wd / ".pbs.stdout"
         ]
+
+
+class LocalSlurmWorker(RemoteWorker):
+
+    def __init__(self, remote_user_rc: str = None, sbatch_args: List[str] = None):
+        super(LocalSlurmWorker, self).__init__(remote_user_rc)
+        self.sbatch_args: List[str] = sbatch_args or []
+
+    def stage_in(self, task: Task):
+        pass
+
+    def stage_out(self, task: Task):
+        pass
+
+    def remote_watcher(self, task: Task):
+        return NullContextManager()
+
+    def remote_script_is_running(self):
+        state = self.get_job_state()
+        return state in ["PENDING", "RUNNING", "STAGE_OUT", "COMPLETING"]
+
+    def start_remote_script(self, task):
+        sbatch_command = self.sbatch_command(task)
+        p = subprocess.run(
+            sbatch_command,
+            input=self.generate_remote_script(task),
+            encoding='utf-8',
+            capture_output=True
+        )
+
+        if p.returncode != 0:
+            raise RuntimeError(f"Can't send job {sbatch_command}\n"
+                               f"Stderr:\n {p.stderr}")
+
+        self.job_id = self.parse_job_id(p.stdout)
+
+        # Immediate subsequent call to sacct returns nothing
+        # wait for a second to circumvent this problem
+        time.sleep(1.0)
+
+    def parse_job_id(self, sbatch_stdout: str) -> int:
+        m = re.search(
+            r"Submitted batch job (?P<job_id>\d+)",
+            sbatch_stdout
+        )
+        if not m:
+            raise RuntimeError(f"Can't parse job_id from sbatch output:\n{sbatch_stdout}")
+        job_id = int(m.group("job_id"))
+        return job_id
+
+    def kill_remote_script(self):
+        subprocess.call([
+            "scancel",
+            "--full",
+            f"{self.job_id}"
+        ])
+
+    def generate_remote_script(self, task: Task):
+        return f"""\
+#!/bin/bash
+
+source /etc/profile
+source ~/.profile
+
+{self.remote_user_rc}
+
+WORK_DIR={task.wd}
+cd "$WORK_DIR"
+
+exec python -c "
+import remote_runner
+from remote_runner.errors import RaiseOnceOnSignals
+from pathlib import Path
+
+with RaiseOnceOnSignals():
+    task = remote_runner.Task.load(Path('{shlex.quote(str(task.state_filename))}'))
+    worker = remote_runner.LocalWorker()
+    worker.run(task)
+"
+    """
+
+    def get_job_state(self) -> str:
+        cmd = [
+            "sacct",
+            "--job", f"{self.job_id}.batch",
+            "--noheader",
+            "--format=state",
+            "--parsable2"
+        ]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True
+        )
+
+        for i in range(2):
+            if result.stdout:
+                break
+            else:
+                time.sleep(0.5)
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True
+            )
+
+        return (result.stdout or b"").decode('utf-8').strip()
+
+    def sbatch_command(self, task: Task) -> List[str]:
+        return [
+                   "sbatch",
+                   f"--job-name={task.name_or_wd}",
+                   f"--error={task.wd}/.slurm.stderr",
+                   f"--output={task.wd}/.slurm.stdout"
+               ] + self.sbatch_args
 
 
 class Runner(multiprocessing.Process):
